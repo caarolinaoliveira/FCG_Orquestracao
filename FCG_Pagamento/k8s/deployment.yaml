@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pagamentos-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pagamentos-worker
+  template:
+    metadata:
+      labels:
+        app: pagamentos-worker
+    spec:
+      containers:
+        - name: pagamentos-worker
+          image: carolinadso/fcg-pagamentos-worker:latest
+          envFrom:
+            - configMapRef:
+                name: pagamentos-configmap
+            - secretRef:
+                name: pagamentos-secret

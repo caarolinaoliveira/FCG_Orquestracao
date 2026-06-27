@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: usuarios-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: usuarios-api
+  template:
+    metadata:
+      labels:
+        app: usuarios-api
+    spec:
+      containers:
+        - name: usuarios-api
+          image: carolinadso/fcg-usuarios-api:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: usuarios-configmap
+            - secretRef:
+                name: usuarios-secret

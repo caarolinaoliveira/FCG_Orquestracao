@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: usuarios-configmap
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_URLS: "http://+:8080"
+  RabbitMQ__Host: "fcg-rabbitmq"
+  RabbitMQ__Port: "5672"
+  RabbitMQ__Usuario: "guest"

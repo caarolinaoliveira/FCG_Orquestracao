@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notificacoes-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notificacoes-worker
+  template:
+    metadata:
+      labels:
+        app: notificacoes-worker
+    spec:
+      containers:
+        - name: notificacoes-worker
+          image: carolinadso/fcg-notificacoes-worker:latest
+          envFrom:
+            - configMapRef:
+                name: notificacoes-configmap
+            - secretRef:
+                name: notificacoes-secret

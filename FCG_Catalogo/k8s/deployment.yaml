@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogo-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalogo-api
+  template:
+    metadata:
+      labels:
+        app: catalogo-api
+    spec:
+      containers:
+        - name: catalogo-api
+          image: carolinadso/fcg-catalogo-api:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: catalogo-configmap
+            - secretRef:
+                name: catalogo-secret
