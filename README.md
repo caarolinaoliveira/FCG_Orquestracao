@@ -66,3 +66,20 @@ kubectl port-forward service/fcg-rabbitmq 15672:15672
 ```
 
 > ⚠️ As credenciais neste repositório são exclusivas para ambiente de desenvolvimento local. Não utilize em produção.
+
+### 5. Acessar o banco de dados
+
+
+Conecte via VS Code (extensão mssql) ou Azure Data Studio:
+
+| Campo | Valor |
+|-------|-------|
+| Server | `localhost` |
+| User | `sa` |
+| Password | `FCG@Pass123` |
+| Trust Server Certificate | `true` |
+
+Bancos criados automaticamente:
+- `FCG_Usuarios`
+- `FCG_Catalogo`
+- `FCG_Pagamentos`
