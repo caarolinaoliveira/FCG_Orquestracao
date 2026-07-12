@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: catalogo-configmap
 data:
-  ASPNETCORE_ENVIRONMENT: "Production"
+  ASPNETCORE_ENVIRONMENT: "Development"
   ASPNETCORE_URLS: "http://+:8080"
   RabbitMQ__Host: "fcg-rabbitmq"
   RabbitMQ__Port: "5672"
