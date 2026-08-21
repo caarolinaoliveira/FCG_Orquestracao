@@ -35,6 +35,90 @@ services:
       timeout: 5s
       retries: 10
 
+  kong-database:
+    image: postgres:13
+    container_name: fcg-kong-database
+    environment:
+      POSTGRES_USER: "kong"
+      POSTGRES_PASSWORD: "kong"
+      POSTGRES_DB: "kong"
+    volumes:
+      - kong_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "kong"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kong-migrations:
+    image: kong:3.7
+    container_name: fcg-kong-migrations
+    command: kong migrations bootstrap
+    environment:
+      KONG_DATABASE: "postgres"
+      KONG_PG_HOST: "fcg-kong-database"
+      KONG_PG_USER: "kong"
+      KONG_PG_PASSWORD: "kong"
+      KONG_PG_DATABASE: "kong"
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    restart: "no"
+
+  kong:
+    image: kong:3.7
+    container_name: fcg-kong
+    environment:
+      KONG_DATABASE: "postgres"
+      KONG_PG_HOST: "fcg-kong-database"
+      KONG_PG_USER: "kong"
+      KONG_PG_PASSWORD: "kong"
+      KONG_PG_DATABASE: "kong"
+      KONG_PROXY_ACCESS_LOG: "/dev/stdout"
+      KONG_ADMIN_ACCESS_LOG: "/dev/stdout"
+      KONG_PROXY_ERROR_LOG: "/dev/stderr"
+      KONG_ADMIN_ERROR_LOG: "/dev/stderr"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+    ports:
+      - "8000:8000"   # proxy (entrada única do sistema)
+      - "8001:8001"   # admin API
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-migrations:
+        condition: service_completed_successfully
+      usuarios-api:
+        condition: service_started
+      catalogo-api:
+        condition: service_started
+    restart: unless-stopped
+
+  konga:
+    image: pantsel/konga:latest
+    container_name: fcg-konga
+    environment:
+      NODE_ENV: "production"
+    ports:
+      - "1337:1337"
+    depends_on:
+      - kong
+    restart: unless-stopped
+
+  localstack:
+    image: localstack/localstack:3.8
+    container_name: fcg-localstack
+    environment:
+      SERVICES: "lambda,sqs,dynamodb"
+      DEBUG: "1"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+    ports:
+      - "4566:4566"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - localstack_data:/var/lib/localstack
+    restart: unless-stopped
+
   usuarios-api:
     image: carolinadso/fcg-usuarios-api:latest
     container_name: fcg-usuarios-api
@@ -109,3 +193,5 @@ services:
 volumes:
   sqlserver_data:
   rabbitmq_data:
+  localstack_data:
+  kong_data:
