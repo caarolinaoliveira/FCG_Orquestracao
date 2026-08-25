@@ -117,10 +117,12 @@ services:
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
       - localstack_data:/var/lib/localstack
+      - ./localstack-init:/etc/localstack/init/ready.d
+      - ./localstack-init/artifacts:/opt/lambda-artifacts
     restart: unless-stopped
 
   usuarios-api:
-    image: carolinadso/fcg-usuarios-api:latest
+    image: caarolindso/fcg-usuarios-api:latest
     container_name: fcg-usuarios-api
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
@@ -130,6 +132,7 @@ services:
       RabbitMQ__Port: "5672"
       RabbitMQ__Usuario: "guest"
       RabbitMQ__Senha: "guest"
+      AWS__SqsServiceUrl: "http://fcg-localstack:4566"
     ports:
       - "5101:8080"
     depends_on:
@@ -137,10 +140,12 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      localstack:
+        condition: service_started
     restart: unless-stopped
 
   catalogo-api:
-    image: carolinadso/fcg-catalogo-api:latest
+    image: caarolindso/fcg-catalogo-api:latest
     container_name: fcg-catalogo-api
     environment:
       ASPNETCORE_ENVIRONMENT: "Development"
@@ -150,6 +155,11 @@ services:
       RabbitMQ__Port: "5672"
       RabbitMQ__Usuario: "guest"
       RabbitMQ__Senha: "guest"
+      # FCG_Catalogo não tem appsettings.json no repo — mesmos valores usados por
+      # FCG_Usuarios/appsettings.json e pelo consumer JWT do kong.yaml.
+      JwtSettings__Segredo: "CaracteresAleatoriosParaSegredoJWT"
+      JwtSettings__Emissor: "FCG"
+      JwtSettings__Audiencia: "FCG.Client"
     ports:
       - "5133:8080"
     depends_on:
@@ -160,7 +170,7 @@ services:
     restart: unless-stopped
 
   pagamentos-worker:
-    image: carolinadso/fcg-pagamentos-worker:latest
+    image: caarolindso/fcg-pagamentos-worker:latest
     container_name: fcg-pagamentos-worker
     environment:
       DOTNET_ENVIRONMENT: "Development"
@@ -169,26 +179,34 @@ services:
       RabbitMQ__Port: "5672"
       RabbitMQ__Usuario: "guest"
       RabbitMQ__Senha: "guest"
+      AWS__SqsServiceUrl: "http://fcg-localstack:4566"
     depends_on:
       sqlserver:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      localstack:
+        condition: service_started
     restart: unless-stopped
 
-  notificacoes-worker:
-    image: carolinadso/fcg-notificacoes-worker:latest
-    container_name: fcg-notificacoes-worker
-    environment:
-      DOTNET_ENVIRONMENT: "Development"
-      RabbitMQ__Host: "fcg-rabbitmq"
-      RabbitMQ__Port: "5672"
-      RabbitMQ__Usuario: "guest"
-      RabbitMQ__Senha: "guest"
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
+  # notificacoes-worker: substituído pela função serverless FCG.Worker.SqsFunction,
+  # registrada no LocalStack via localstack-init/00-setup-notificacoes.sh e acionada
+  # diretamente pelas filas SQS (Event Source Mapping) — ver FCG_Notificacoes/docs/adr/0002.
+  # O código do worker RabbitMQ contínuo continua no repositório (FCG_Notificacoes/FCG.Worker),
+  # só não é mais implantado como container de longa duração aqui.
+  # notificacoes-worker:
+  #   image: caarolindso/fcg-notificacoes-worker:latest
+  #   container_name: fcg-notificacoes-worker
+  #   environment:
+  #     DOTNET_ENVIRONMENT: "Development"
+  #     RabbitMQ__Host: "fcg-rabbitmq"
+  #     RabbitMQ__Port: "5672"
+  #     RabbitMQ__Usuario: "guest"
+  #     RabbitMQ__Senha: "guest"
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #   restart: unless-stopped
 
 volumes:
   sqlserver_data:

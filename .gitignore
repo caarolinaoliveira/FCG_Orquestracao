@@ -1,0 +1,12 @@
+appsettings.Development.json
+
+bin/
+obj/
+*.dll
+*.exe
+
+*.log
+
+.vs/
+.vscode/
+*.user
