@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: pagamentos-configmap
-data:
-  DOTNET_ENVIRONMENT: "Development"
-  RabbitMQ__Host: "fcg-rabbitmq"
-  RabbitMQ__Port: "5672"
-  RabbitMQ__Usuario: "guest"
