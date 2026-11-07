@@ -1,0 +1,88 @@
+# Elasticsearch SEM volume persistente (emptyDir): o índice de busca é DERIVADO do SQL Server e será
+# reconstruído por uma reindexação no startup do Catálogo. Se o pod for recriado, o índice é refeito.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: elasticsearch
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: elasticsearch
+        app.kubernetes.io/component: infra
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 1000 # usuário "elasticsearch" da imagem
+      containers:
+        - name: elasticsearch
+          image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+          ports:
+            - name: http
+              containerPort: 9200
+          env:
+            - name: discovery.type
+              value: single-node
+            # ATENÇÃO: segurança (xpack) desligada porque o Elasticsearch só é acessível dentro do cluster
+            # (Service ClusterIP, sem Ingress). Quando a busca fuzzy do Catálogo for implementada,
+            # reavaliar: habilitar xpack e acrescentar a senha do "elastic" aos segredos.
+            - name: xpack.security.enabled
+              value: "false"
+            # Machine Learning não é usado e reserva memória: desligado para caber no limit de 1Gi.
+            - name: xpack.ml.enabled
+              value: "false"
+            # Heap de 384m: com 512m o container já usava ~90% do limit de 1Gi sem nenhuma carga.
+            # Medir de novo quando a busca fuzzy do Catálogo existir.
+            - name: ES_JAVA_OPTS
+              value: -Xms384m -Xmx384m
+          resources:
+            requests:
+              cpu: 200m
+              memory: 768Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          startupProbe:
+            httpGet:
+              path: /_cluster/health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 30
+            failureThreshold: 5
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fcg-elasticsearch
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: elasticsearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: http

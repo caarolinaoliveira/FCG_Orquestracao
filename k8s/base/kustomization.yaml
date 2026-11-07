@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fcg
+
+resources:
+  - namespace.yaml
+  - infra/sqlserver.yaml
+  - infra/rabbitmq.yaml
+  - infra/mongodb.yaml
+  - infra/redis.yaml
+  - infra/elasticsearch.yaml
+  - apps/usuarios.yaml
+  - apps/catalogo.yaml
+  - apps/pagamentos.yaml
+  - apps/notificacoes.yaml
+  - ingress.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: fcg
+    includeTemplates: true
+
+# Imagens das aplicações: a tag SEMPRE é definida pelo overlay (nada de "latest").
+# A base sozinha não é implantável de propósito: a tag abaixo é um marcador.
+images:
+  - name: fcgcarolina.azurecr.io/usuarios-api
+    newTag: DEFINA-A-TAG-NO-OVERLAY
+  - name: fcgcarolina.azurecr.io/catalogo-api
+    newTag: DEFINA-A-TAG-NO-OVERLAY
+  - name: fcgcarolina.azurecr.io/pagamentos-worker
+    newTag: DEFINA-A-TAG-NO-OVERLAY
+  - name: fcgcarolina.azurecr.io/notificacoes-worker
+    newTag: DEFINA-A-TAG-NO-OVERLAY
+
+# Secrets (infra-secrets, usuarios-secrets, catalogo-secrets, pagamentos-secrets e notificacoes-secrets)
+# NÃO existem na base, de propósito: são criados por scripts/create-local-secrets.ps1 (overlay local)
+# ou sincronizados do Azure Key Vault pelo SecretProviderClass (overlay aks).

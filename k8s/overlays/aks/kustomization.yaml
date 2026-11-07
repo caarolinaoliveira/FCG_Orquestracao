@@ -1,0 +1,38 @@
+# Overlay para o AKS (Azure). Segredos vêm do Azure Key Vault (SecretProviderClass + CSI).
+#
+# Antes de aplicar:
+#  1. Imagens publicadas no ACR fcgcarolina.azurecr.io com a tag abaixo (ou use "kustomize edit set image").
+#  2. Preencher userAssignedIdentityID em secretproviderclass.yaml (ver README e infra/create-aks.ps1).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Necessário também aqui: o namespace da base só vale para os recursos da base, e a
+# SecretProviderClass (deste overlay) precisa estar no MESMO namespace dos pods que a montam.
+namespace: fcg
+
+resources:
+  - ../../base
+  - secretproviderclass.yaml
+
+# Tag de release das imagens (nunca "latest"). Para publicar uma nova versão:
+#   cd k8s/overlays/aks && kustomize edit set image fcgcarolina.azurecr.io/usuarios-api=fcgcarolina.azurecr.io/usuarios-api:1.0.1
+images:
+  - name: fcgcarolina.azurecr.io/usuarios-api
+    newTag: 1.0.0
+  - name: fcgcarolina.azurecr.io/catalogo-api
+    newTag: 1.0.0
+  - name: fcgcarolina.azurecr.io/pagamentos-worker
+    newTag: 1.0.0
+  - name: fcgcarolina.azurecr.io/notificacoes-worker
+    newTag: 1.0.0
+
+patches:
+  - path: csi-volumes.yaml
+  # Application Routing (NGINX gerenciado do AKS).
+  - target:
+      kind: Ingress
+      name: fcg
+    patch: |-
+      - op: add
+        path: /spec/ingressClassName
+        value: webapprouting.kubernetes.azure.com

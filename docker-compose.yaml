@@ -1,215 +1,208 @@
+# Ambiente local completo do FCG (Fase 4).
+# Requer um arquivo .env na mesma pasta: copie o .env.example e troque os valores.
+# O .env NÃO é versionado. Nenhuma credencial fica neste arquivo.
+name: fcg
+
+# --- Blocos reutilizáveis (âncoras YAML) -------------------------------------
+
+# New Relic é opcional no local: por padrão o agente fica DESLIGADO.
+# Para ligar: NEW_RELIC_ENABLED=true e NEW_RELIC_LICENSE_KEY=<sua chave> no .env.
+# As variáveis CORECLR_* (profiler) já vêm nos Dockerfiles de cada aplicação.
+x-newrelic-env: &newrelic-env
+  NEW_RELIC_LICENSE_KEY: ${NEW_RELIC_LICENSE_KEY:-}
+  NEW_RELIC_AGENT_ENABLED: ${NEW_RELIC_ENABLED:-false}
+  NEW_RELIC_DISTRIBUTED_TRACING_ENABLED: "true"
+  NEW_RELIC_APPLICATION_LOGGING_ENABLED: "true"
+  NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED: "true"
+
+x-rabbitmq-env: &rabbitmq-env
+  RabbitMQ__Host: rabbitmq
+  RabbitMQ__Port: "5672"
+  RabbitMQ__Usuario: ${RABBITMQ_USER:?Defina RABBITMQ_USER no arquivo .env}
+  RabbitMQ__Senha: ${RABBITMQ_PASSWORD:?Defina RABBITMQ_PASSWORD no arquivo .env}
+
+x-mongodb-env: &mongodb-env
+  MongoDB__ConnectionString: mongodb://mongodb:27017
+  MongoDB__EventLogDatabase: FCG_EventLog
+
+x-jwt-env: &jwt-env
+  JwtSettings__Segredo: ${JWT_SECRET:?Defina JWT_SECRET no arquivo .env (minimo 32 caracteres)}
+  JwtSettings__Emissor: FCG
+  JwtSettings__Audiencia: FCG.Client
+  JwtSettings__ExpiracaoHoras: "2"
+
+# --- Infraestrutura -----------------------------------------------------------
+
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: fcg-sqlserver
     environment:
-      SA_PASSWORD: "FCG@Pass123"
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:?Defina SA_PASSWORD no arquivo .env}
       ACCEPT_EULA: "Y"
-      MSSQL_PID: "Developer"
+      MSSQL_PID: Developer
     ports:
-      - "1433:1433"
+      - "127.0.0.1:1433:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
-    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "FCG@Pass123", "-Q", "SELECT 1", "-No"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" -b -o /dev/null"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
 
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: fcg-rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: "guest"
-      RABBITMQ_DEFAULT_PASS: "guest"
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Defina RABBITMQ_USER no arquivo .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Defina RABBITMQ_PASSWORD no arquivo .env}
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672" # interface de gerenciamento
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      # "ping" passa antes de a porta AMQP abrir; check_port_connectivity só passa quando os listeners aceitam conexão.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:7
+    ports:
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 10
-
-  kong-database:
-    image: postgres:13
-    container_name: fcg-kong-database
-    environment:
-      POSTGRES_USER: "kong"
-      POSTGRES_PASSWORD: "kong"
-      POSTGRES_DB: "kong"
-    volumes:
-      - kong_data:/var/lib/postgresql/data
     restart: unless-stopped
+
+  # Nenhuma aplicação usa o Elasticsearch hoje; ele está aqui por decisão de arquitetura.
+  # Segurança (xpack) DESLIGADA apenas no ambiente local.
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.ml.enabled: "false" # Machine Learning não é usado e reserva memória
+      ES_JAVA_OPTS: -Xms384m -Xmx384m
+    ports:
+      - "127.0.0.1:9200:9200"
+    # Sem volume: o índice é derivado do SQL Server e será reconstruído por reindexação no startup do Catálogo.
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "kong"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  kong-migrations:
-    image: kong:3.7
-    container_name: fcg-kong-migrations
-    command: kong migrations bootstrap
-    environment:
-      KONG_DATABASE: "postgres"
-      KONG_PG_HOST: "fcg-kong-database"
-      KONG_PG_USER: "kong"
-      KONG_PG_PASSWORD: "kong"
-      KONG_PG_DATABASE: "kong"
-    depends_on:
-      kong-database:
-        condition: service_healthy
-    restart: "no"
-
-  kong:
-    image: kong:3.7
-    container_name: fcg-kong
-    environment:
-      KONG_DATABASE: "postgres"
-      KONG_PG_HOST: "fcg-kong-database"
-      KONG_PG_USER: "kong"
-      KONG_PG_PASSWORD: "kong"
-      KONG_PG_DATABASE: "kong"
-      KONG_PROXY_ACCESS_LOG: "/dev/stdout"
-      KONG_ADMIN_ACCESS_LOG: "/dev/stdout"
-      KONG_PROXY_ERROR_LOG: "/dev/stderr"
-      KONG_ADMIN_ERROR_LOG: "/dev/stderr"
-      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
-    ports:
-      - "8000:8000"   # proxy (entrada única do sistema)
-      - "8001:8001"   # admin API
-    depends_on:
-      kong-database:
-        condition: service_healthy
-      kong-migrations:
-        condition: service_completed_successfully
-      usuarios-api:
-        condition: service_started
-      catalogo-api:
-        condition: service_started
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
     restart: unless-stopped
 
-  konga:
-    image: pantsel/konga:latest
-    container_name: fcg-konga
-    environment:
-      NODE_ENV: "production"
-    ports:
-      - "1337:1337"
-    depends_on:
-      - kong
-    restart: unless-stopped
-
-  localstack:
-    image: localstack/localstack:3.8
-    container_name: fcg-localstack
-    environment:
-      SERVICES: "lambda,sqs,dynamodb"
-      DEBUG: "1"
-      DOCKER_HOST: "unix:///var/run/docker.sock"
-    ports:
-      - "4566:4566"
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-      - localstack_data:/var/lib/localstack
-      - ./localstack-init:/etc/localstack/init/ready.d
-      - ./localstack-init/artifacts:/opt/lambda-artifacts
-    restart: unless-stopped
+  # --- Aplicações -------------------------------------------------------------
+  # O build usa as pastas irmãs (repositórios clonados lado a lado).
+  # Para outro layout, defina USUARIOS_CONTEXT, CATALOGO_CONTEXT, PAGAMENTOS_CONTEXT
+  # e NOTIFICACOES_CONTEXT no .env.
 
   usuarios-api:
-    image: caarolindso/fcg-usuarios-api:latest
-    container_name: fcg-usuarios-api
+    build:
+      context: ${USUARIOS_CONTEXT:-../FCG_Usuarios}
+    image: fcg/usuarios-api:local
     environment:
-      ASPNETCORE_ENVIRONMENT: "Development"
-      ASPNETCORE_URLS: "http://+:8080"
-      ConnectionStrings__DefaultConnection: "Server=fcg-sqlserver;Database=FCG_Usuarios;User Id=sa;Password=FCG@Pass123;TrustServerCertificate=True"
-      RabbitMQ__Host: "fcg-rabbitmq"
-      RabbitMQ__Port: "5672"
-      RabbitMQ__Usuario: "guest"
-      RabbitMQ__Senha: "guest"
-      AWS__SqsServiceUrl: "http://fcg-localstack:4566"
+      <<: [*newrelic-env, *rabbitmq-env, *mongodb-env, *jwt-env]
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=FCG_Usuarios;User Id=sa;Password=${SA_PASSWORD:?Defina SA_PASSWORD no arquivo .env};TrustServerCertificate=True;
+      Redis__ConnectionString: redis:6379
+      NEW_RELIC_APP_NAME: FCG-UsuariosAPI
     ports:
       - "5101:8080"
     depends_on:
-      sqlserver:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      localstack:
-        condition: service_started
-    restart: unless-stopped
+      sqlserver: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: on-failure
 
   catalogo-api:
-    image: caarolindso/fcg-catalogo-api:latest
-    container_name: fcg-catalogo-api
+    # O consumidor de payment.processed roda DENTRO desta API.
+    # O projeto FCG.Catalogo.Worker NÃO é implantado (duplicaria o consumo da fila).
+    build:
+      context: ${CATALOGO_CONTEXT:-../FCG_Catalogo}
+    image: fcg/catalogo-api:local
     environment:
-      ASPNETCORE_ENVIRONMENT: "Development"
-      ASPNETCORE_URLS: "http://+:8080"
-      ConnectionStrings__DefaultConnection: "Server=fcg-sqlserver;Database=FCG_Catalogo;User Id=sa;Password=FCG@Pass123;TrustServerCertificate=True"
-      RabbitMQ__Host: "fcg-rabbitmq"
-      RabbitMQ__Port: "5672"
-      RabbitMQ__Usuario: "guest"
-      RabbitMQ__Senha: "guest"
-      # FCG_Catalogo não tem appsettings.json no repo — mesmos valores usados por
-      # FCG_Usuarios/appsettings.json e pelo consumer JWT do kong.yaml.
-      JwtSettings__Segredo: "CaracteresAleatoriosParaSegredoJWT"
-      JwtSettings__Emissor: "FCG"
-      JwtSettings__Audiencia: "FCG.Client"
+      <<: [*newrelic-env, *rabbitmq-env, *mongodb-env, *jwt-env]
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=FCG_Catalogo;User Id=sa;Password=${SA_PASSWORD:?Defina SA_PASSWORD no arquivo .env};TrustServerCertificate=True;
+      Redis__ConnectionString: redis:6379
+      NEW_RELIC_APP_NAME: FCG-CatalogoAPI
     ports:
       - "5133:8080"
     depends_on:
-      sqlserver:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    restart: unless-stopped
+      sqlserver: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: on-failure
 
   pagamentos-worker:
-    image: caarolindso/fcg-pagamentos-worker:latest
-    container_name: fcg-pagamentos-worker
+    build:
+      context: ${PAGAMENTOS_CONTEXT:-../FCG_Pagamentos}
+    image: fcg/pagamentos-worker:local
     environment:
-      DOTNET_ENVIRONMENT: "Development"
-      ConnectionStrings__DefaultConnection: "Server=fcg-sqlserver;Database=FCG_Pagamentos;User Id=sa;Password=FCG@Pass123;TrustServerCertificate=True"
-      RabbitMQ__Host: "fcg-rabbitmq"
-      RabbitMQ__Port: "5672"
-      RabbitMQ__Usuario: "guest"
-      RabbitMQ__Senha: "guest"
-      AWS__SqsServiceUrl: "http://fcg-localstack:4566"
+      <<: [*newrelic-env, *rabbitmq-env, *mongodb-env]
+      DOTNET_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=FCG_Pagamentos;User Id=sa;Password=${SA_PASSWORD:?Defina SA_PASSWORD no arquivo .env};TrustServerCertificate=True;
+      NEW_RELIC_APP_NAME: FCG-PagamentosWorker
     depends_on:
-      sqlserver:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      localstack:
-        condition: service_started
-    restart: unless-stopped
+      sqlserver: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      mongodb: { condition: service_healthy }
+    restart: on-failure
 
-  # notificacoes-worker: substituído pela função serverless FCG.Worker.SqsFunction,
-  # registrada no LocalStack via localstack-init/00-setup-notificacoes.sh e acionada
-  # diretamente pelas filas SQS (Event Source Mapping) — ver FCG_Notificacoes/docs/adr/0002.
-  # O código do worker RabbitMQ contínuo continua no repositório (FCG_Notificacoes/FCG.Worker),
-  # só não é mais implantado como container de longa duração aqui.
-  # notificacoes-worker:
-  #   image: caarolindso/fcg-notificacoes-worker:latest
-  #   container_name: fcg-notificacoes-worker
-  #   environment:
-  #     DOTNET_ENVIRONMENT: "Development"
-  #     RabbitMQ__Host: "fcg-rabbitmq"
-  #     RabbitMQ__Port: "5672"
-  #     RabbitMQ__Usuario: "guest"
-  #     RabbitMQ__Senha: "guest"
-  #   depends_on:
-  #     rabbitmq:
-  #       condition: service_healthy
-  #   restart: unless-stopped
+  notificacoes-worker:
+    build:
+      context: ${NOTIFICACOES_CONTEXT:-../FCG_Notificacoes}
+    image: fcg/notificacoes-worker:local
+    environment:
+      <<: [*newrelic-env, *rabbitmq-env]
+      DOTNET_ENVIRONMENT: Development
+      NEW_RELIC_APP_NAME: FCG-NotificacoesWorker
+    depends_on:
+      rabbitmq: { condition: service_healthy }
+    restart: on-failure
 
 volumes:
   sqlserver_data:
   rabbitmq_data:
-  localstack_data:
-  kong_data:
+  mongodb_data:

@@ -1,0 +1,32 @@
+# Ajustes de ambiente local: Development (Swagger) e agente New Relic desligado (sem licença).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: usuarios-config
+data:
+  ASPNETCORE_ENVIRONMENT: Development
+  NEW_RELIC_AGENT_ENABLED: "false"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: catalogo-config
+data:
+  ASPNETCORE_ENVIRONMENT: Development
+  NEW_RELIC_AGENT_ENABLED: "false"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pagamentos-config
+data:
+  DOTNET_ENVIRONMENT: Development
+  NEW_RELIC_AGENT_ENABLED: "false"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: notificacoes-config
+data:
+  DOTNET_ENVIRONMENT: Development
+  NEW_RELIC_AGENT_ENABLED: "false"
