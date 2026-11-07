@@ -10,3 +10,5 @@ obj/
 .vs/
 .vscode/
 *.user
+# Segredos locais
+.env
