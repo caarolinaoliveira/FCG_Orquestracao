@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Cria os 5 Secrets do FCG no Kubernetes LOCAL (Docker Desktop) a partir do arquivo .env.
 
