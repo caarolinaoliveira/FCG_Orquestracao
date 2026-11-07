@@ -104,7 +104,7 @@ services:
       discovery.type: single-node
       xpack.security.enabled: "false"
       xpack.ml.enabled: "false" # Machine Learning não é usado e reserva memória
-      ES_JAVA_OPTS: -Xms512m -Xmx512m
+      ES_JAVA_OPTS: -Xms384m -Xmx384m
     ports:
       - "127.0.0.1:9200:9200"
     # Sem volume: o índice é derivado do SQL Server e será reconstruído por reindexação no startup do Catálogo.

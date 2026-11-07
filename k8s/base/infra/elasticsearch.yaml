@@ -38,8 +38,10 @@ spec:
             # Machine Learning não é usado e reserva memória: desligado para caber no limit de 1Gi.
             - name: xpack.ml.enabled
               value: "false"
+            # Heap de 384m: com 512m o container já usava ~90% do limit de 1Gi sem nenhuma carga.
+            # Medir de novo quando a busca fuzzy do Catálogo existir.
             - name: ES_JAVA_OPTS
-              value: -Xms512m -Xmx512m
+              value: -Xms384m -Xmx384m
           resources:
             requests:
               cpu: 200m
