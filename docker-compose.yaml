@@ -103,11 +103,11 @@ services:
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
+      xpack.ml.enabled: "false" # Machine Learning não é usado e reserva memória
       ES_JAVA_OPTS: -Xms512m -Xmx512m
     ports:
       - "127.0.0.1:9200:9200"
-    volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
+    # Sem volume: o índice é derivado do SQL Server e será reconstruído por reindexação no startup do Catálogo.
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health >/dev/null || exit 1"]
       interval: 15s
@@ -206,4 +206,3 @@ volumes:
   sqlserver_data:
   rabbitmq_data:
   mongodb_data:
-  elasticsearch_data:

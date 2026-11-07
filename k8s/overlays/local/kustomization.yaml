@@ -1,0 +1,38 @@
+# Overlay para o Kubernetes do Docker Desktop (provisionado com kind).
+#
+# Imagens: o nó enxerga as imagens do Docker local (via o "kind-registry-mirror" do Docker Desktop),
+# então basta rodar "docker compose build" na raiz: ele gera fcg/<app>:local. Não precisa de
+# "kind load", de registry local nem de push.
+#
+# Secrets: NÃO ficam em arquivo. Rode scripts/create-local-secrets.ps1 ANTES de aplicar este overlay.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fcg
+
+resources:
+  - ../../base
+
+images:
+  - name: fcgcarolina.azurecr.io/usuarios-api
+    newName: fcg/usuarios-api
+    newTag: local
+  - name: fcgcarolina.azurecr.io/catalogo-api
+    newName: fcg/catalogo-api
+    newTag: local
+  - name: fcgcarolina.azurecr.io/pagamentos-worker
+    newName: fcg/pagamentos-worker
+    newTag: local
+  - name: fcgcarolina.azurecr.io/notificacoes-worker
+    newName: fcg/notificacoes-worker
+    newTag: local
+
+patches:
+  - path: config-local.yaml
+  - target:
+      kind: Ingress
+      name: fcg
+    patch: |-
+      - op: add
+        path: /spec/ingressClassName
+        value: nginx

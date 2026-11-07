@@ -1,0 +1,128 @@
+# Monta o volume CSI da SecretProviderClass nos Deployments que consomem segredos.
+# Sem o volume montado, o Secret do Kubernetes NÃO é sincronizado a partir do Key Vault.
+# (Mongo, Redis e Elasticsearch não usam segredos, então não montam e não dependem do Key Vault.)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sqlserver
+spec:
+  template:
+    spec:
+      containers:
+        - name: sqlserver
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: kv-fcg-carolina
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+spec:
+  template:
+    spec:
+      containers:
+        - name: rabbitmq
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: kv-fcg-carolina
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: usuarios-api
+spec:
+  template:
+    spec:
+      containers:
+        - name: usuarios-api
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: kv-fcg-carolina
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogo-api
+spec:
+  template:
+    spec:
+      containers:
+        - name: catalogo-api
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: kv-fcg-carolina
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pagamentos-worker
+spec:
+  template:
+    spec:
+      containers:
+        - name: pagamentos-worker
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: kv-fcg-carolina
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notificacoes-worker
+spec:
+  template:
+    spec:
+      containers:
+        - name: notificacoes-worker
+          volumeMounts:
+            - name: secrets-store
+              mountPath: /mnt/secrets-store
+              readOnly: true
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: kv-fcg-carolina
