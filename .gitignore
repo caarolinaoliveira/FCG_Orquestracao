@@ -12,3 +12,6 @@ obj/
 *.user
 # Segredos locais
 .env
+
+# Overlay temporário gerado por scripts/deploy-local.ps1 (tag única por build)
+k8s/overlays/local-run/

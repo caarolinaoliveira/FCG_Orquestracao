@@ -124,7 +124,7 @@ services:
   usuarios-api:
     build:
       context: ${USUARIOS_CONTEXT:-../FCG_Usuarios}
-    image: fcg/usuarios-api:local
+    image: fcg/usuarios-api:${IMAGE_TAG:-local}
     environment:
       <<: [*newrelic-env, *rabbitmq-env, *mongodb-env, *jwt-env]
       ASPNETCORE_ENVIRONMENT: Development
@@ -152,7 +152,7 @@ services:
     # O projeto FCG.Catalogo.Worker NÃO é implantado (duplicaria o consumo da fila).
     build:
       context: ${CATALOGO_CONTEXT:-../FCG_Catalogo}
-    image: fcg/catalogo-api:local
+    image: fcg/catalogo-api:${IMAGE_TAG:-local}
     environment:
       <<: [*newrelic-env, *rabbitmq-env, *mongodb-env, *jwt-env]
       ASPNETCORE_ENVIRONMENT: Development
@@ -178,7 +178,7 @@ services:
   pagamentos-worker:
     build:
       context: ${PAGAMENTOS_CONTEXT:-../FCG_Pagamentos}
-    image: fcg/pagamentos-worker:local
+    image: fcg/pagamentos-worker:${IMAGE_TAG:-local}
     environment:
       <<: [*newrelic-env, *rabbitmq-env, *mongodb-env]
       DOTNET_ENVIRONMENT: Development
@@ -193,7 +193,7 @@ services:
   notificacoes-worker:
     build:
       context: ${NOTIFICACOES_CONTEXT:-../FCG_Notificacoes}
-    image: fcg/notificacoes-worker:local
+    image: fcg/notificacoes-worker:${IMAGE_TAG:-local}
     environment:
       <<: [*newrelic-env, *rabbitmq-env]
       DOTNET_ENVIRONMENT: Development

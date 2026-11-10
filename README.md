@@ -56,9 +56,10 @@ docker-compose.yaml            Ambiente local completo (infra + 4 aplicações)
 .env.example                   Variáveis do compose, com valores FALSOS (copie para .env)
 k8s/
   base/                        Manifestos comuns: infra, aplicações, Services, Ingress
-  overlays/local/              Kubernetes do Docker Desktop (imagens fcg/<app>:local)
+  overlays/local/              Kubernetes do Docker Desktop (imagens fcg/<app>:<tag do build>)
   overlays/aks/                AKS: SecretProviderClass (Key Vault), volumes CSI, Application Routing
 scripts/
+  deploy-local.ps1             Build com tag única + Secrets + aplica o overlay local (uso recomendado)
   create-local-secrets.ps1     Cria os Secrets no Kubernetes local a partir do .env
 infra/
   config.ps1                   Nomes e assinaturas do Azure (sem segredos)
@@ -68,14 +69,17 @@ infra/
 
 ## Rotas do Ingress
 
-O Ingress não usa `host` (atende pelo IP do controlador) e **não expõe** `/health`, `/swagger` nem o painel do RabbitMQ.
+O Ingress não usa `host` (atende pelo IP do controlador) e **não expõe** `/health`, o Swagger do serviço de Usuários nem o painel do RabbitMQ.
 
 | Prefixo | Serviço | Rotas |
 |---|---|---|
 | `/api/usuarios` | `usuarios-api` | `POST registrar`, `POST login`, `GET por-email`, `POST alterar-senha` (requer token) |
-| `/api/jogos` | `catalogo-api` | `GET`, `GET {id}`, `GET buscar/{titulo}`, `POST cadastrar`, `PUT {id}`, `DELETE {id}`, `GET`/`POST {jogoId}/avaliacoes` |
-| `/api/biblioteca` | `catalogo-api` | `GET {usuarioId}` |
-| `/api/pedidos` | `catalogo-api` | `POST {jogoId}?usuarioId=`, `GET usuario/{usuarioId}` |
+| `/api/jogos` | `catalogo-api` | `GET`, `GET {id}`, `GET buscar/{titulo}` (públicas); `POST cadastrar`, `PUT {id}`, `DELETE {id}` (**só role `Admin`**); `GET`/`POST {jogoId}/avaliacoes` (autenticado) |
+| `/api/biblioteca` | `catalogo-api` | `GET {usuarioId}` (autenticado) |
+| `/api/pedidos` | `catalogo-api` | `POST {jogoId}?usuarioId=`, `GET usuario/{usuarioId}` (autenticado) |
+| `/swagger-catalogo` | `catalogo-api` | Swagger UI e definição do Catálogo (`/swagger-catalogo/index.html`, `/swagger-catalogo/v1/swagger.json`) |
+
+O Swagger do Catálogo usa o prefixo próprio `swagger-catalogo` porque `/swagger` pertence ao serviço de Usuários e o Ingress só pode enviar cada caminho a um serviço. Ele é ligado pelo ConfigMap `catalogo-config` (`Swagger__Habilitado`, `Swagger__RoutePrefix`); para desligar, ponha `Swagger__Habilitado` em `"false"` e remova a regra do Ingress. As regras de autorização do Catálogo estão no [README do Catálogo](https://github.com/caarolinaoliveira/FCG_Catalogo#autoriza%C3%A7%C3%A3o).
 
 As probes do Kubernetes usam `GET /health` direto no pod (porta 8080), sem passar pelo Ingress.
 
@@ -125,18 +129,21 @@ Para desligar e apagar os dados: `docker compose down -v`.
 Pré-requisitos: Kubernetes habilitado no Docker Desktop (contexto `docker-desktop`) e `kubectl` com Kustomize embutido.
 
 ```powershell
-# 1. Gera as imagens fcg/<app>:local (a mesma etapa do compose)
-docker compose build
+# Um comando: build com TAG ÚNICA, Secrets (a partir do .env) e aplicação do overlay local
+.\scripts\deploy-local.ps1
 
-# 2. Cria os 5 Secrets no cluster local a partir do .env (nunca grava arquivo com valores)
-.\scripts\create-local-secrets.ps1
-
-# 3. Aplica o overlay local
-kubectl --context docker-desktop apply -k k8s/overlays/local
 kubectl --context docker-desktop -n fcg get pods      # aguarde 9/9 Running
 ```
 
-**Como o cluster enxerga as imagens locais.** O Kubernetes do Docker Desktop é provisionado com *kind* e roda em um containerd próprio, mas o Docker Desktop mantém um espelho de registry (`kind-registry-mirror`) que serve ao nó as imagens do Docker local. Por isso **não é preciso** `kind load`, registry local nem `docker push`: basta o `docker compose build`. Isso foi testado com a política de pull padrão (`IfNotPresent`) e com `Never`. Reconstrua a imagem e reinicie o Deployment (`kubectl -n fcg rollout restart deploy/<nome>`) para pegar mudanças.
+Repita o `deploy-local.ps1` **a cada mudança de código**. Opções: `-Tag <tag>` (tag manual), `-SemBuild` (reaproveita imagens já construídas com a `-Tag` informada) e `-LimparImagensAntigas` (remove do nó as tags de builds anteriores).
+
+**Como o cluster enxerga as imagens locais.** O Kubernetes do Docker Desktop é provisionado com *kind* e roda em um containerd próprio, mas o Docker Desktop mantém um espelho de registry (`kind-registry-mirror`) que serve ao nó as imagens do Docker local. Por isso **não é preciso** `kind load`, registry local nem `docker push`: basta construir a imagem com `docker compose build`.
+
+**Por que cada build usa uma tag nova (`local-<aaaammddhhmmss>`).** O nó guarda as imagens em cache **por tag**: com a política de pull padrão (`IfNotPresent`), reconstruir a mesma tag (por exemplo `local`) e reiniciar o Deployment **não** atualiza o pod; ele continua rodando a imagem antiga em cache. Isso foi reproduzido e confirmado comparando os digests. A solução é uma tag diferente a cada build, o mesmo princípio da pipeline do AKS (uma tag por build, como o SHA do commit). O `imagePullPolicy: Always` **não resolve**: a imagem local não está em nenhum registry e o pod cairia em `ErrImagePull`.
+
+O script faz o `docker compose build` com `IMAGE_TAG=<tag>` e gera um overlay temporário (`k8s/overlays/local-run/`, ignorado pelo git) que só define o bloco `images:` com a tag nova, o equivalente do `kustomize edit set image` da pipeline, sem alterar nenhum arquivo versionado. O mesmo `IMAGE_TAG` vale para o compose (`IMAGE_TAG=minha-tag docker compose build`); sem ele, a tag é `local`.
+
+> Aplicar `kubectl apply -k k8s/overlays/local` direto (sem o script) usa a tag fixa `local` e sofre do problema acima a partir do segundo build.
 
 **Acessar as APIs.** Sem controlador de Ingress, use `port-forward`:
 
@@ -186,7 +193,7 @@ Para limpar tudo: `kubectl --context docker-desktop delete -k k8s/overlays/local
    az aks show --subscription fcg-aks-payg -g rg-fcg-aks -n aks-fcg --query "addonProfiles.azureKeyvaultSecretsProvider.identity.clientId" -o tsv
    ```
    Troque o texto `PREENCHER-CLIENT-ID-DA-IDENTIDADE-DO-COMPLEMENTO` em `k8s/overlays/aks/secretproviderclass.yaml` por esse valor.
-5. **Garanta que as imagens estão no ACR** com a tag definida em `k8s/overlays/aks/kustomization.yaml` (`1.0.0`). Para outra versão: `kustomize edit set image fcgcarolina.azurecr.io/usuarios-api=fcgcarolina.azurecr.io/usuarios-api:<tag>` dentro de `k8s/overlays/aks`. **Nunca use `latest`.**
+5. **Garanta que as imagens estão no ACR** com a tag definida em `k8s/overlays/aks/kustomization.yaml` (`1.0.0`). Para outra versão: `kustomize edit set image fcgcarolina.azurecr.io/usuarios-api=fcgcarolina.azurecr.io/usuarios-api:<tag>` dentro de `k8s/overlays/aks`. **Nunca use `latest`** e **use uma tag nova a cada build** (o SHA do commit, por exemplo): o nó do AKS também guarda imagens em cache por tag, então reutilizar uma tag pode manter o pod rodando a imagem antiga, o mesmo problema descrito na seção do Kubernetes local.
 6. **Aplique e verifique:**
    ```powershell
    kubectl apply -k k8s/overlays/aks
@@ -258,7 +265,9 @@ Decisões conscientes, registradas aqui para não serem esquecidas:
 - **SQL Server Express** no cluster: gratuito em produção, mas limitado (cerca de 10 GB por banco e ~1,4 GB de memória para cache). O compose local usa a edição Developer (somente dev/teste).
 - **Um único nó e uma réplica por serviço.** Não há alta disponibilidade: uma atualização do nó ou uma falha causa indisponibilidade. É o preço do menor custo possível. O bloco `RollingUpdate` (`maxUnavailable: 0`, `maxSurge: 1`) evita indisponibilidade só nas atualizações de aplicação.
 - **Sem monitoramento da Azure e sem agente de infraestrutura do New Relic**, para poupar custo e memória. A observabilidade das aplicações é feita pelo New Relic APM.
-- **Autorização do Catálogo.** Hoje quase todos os endpoints do Catálogo são `[AllowAnonymous]`, inclusive `POST /api/jogos/cadastrar`, `PUT` e `DELETE` de jogos. Como o Ingress expõe `/api/jogos` publicamente, qualquer pessoa consegue criar, alterar e apagar jogos. Isso precisa ser tratado na aplicação.
+- **Identidade do usuário nas rotas do Catálogo.** Criar, alterar e apagar jogos exige a role `Admin`, e biblioteca, pedidos e avaliações exigem login. Porém o token JWT só traz o e-mail e a role, **não o id do usuário**, então as rotas que recebem `usuarioId` não verificam se ele pertence a quem está logado: qualquer usuário autenticado que souber o GUID de outro pode consultar a biblioteca dele ou comprar e avaliar em seu nome. Para corrigir, o serviço de Usuários precisa colocar o id no token.
+- **Não existe administrador de fábrica.** O `registrar` só atribui a role `Usuario`; um `Admin` é criado promovendo o usuário por SQL no banco `FCG_Usuarios` (ver o [README do Catálogo](https://github.com/caarolinaoliveira/FCG_Catalogo#autoriza%C3%A7%C3%A3o)).
+- **Swagger do Catálogo exposto publicamente** pelo Ingress (`/swagger-catalogo`), habilitado para a demonstração. Ele documenta a API, mas não dá acesso às rotas protegidas sem token. Desligue depois da demonstração (ver "Rotas do Ingress").
 - **Busca por título exata.** `GET /api/jogos/buscar/{titulo}` compara o título inteiro; a busca fuzzy (requisito do projeto) será feita com o Elasticsearch.
 - **Ingress controller local aposentado.** O ingress-nginx usado no teste local não recebe mais atualizações (ver acima). Não afeta o AKS.
 - **Mudança de segredo exige reinício dos pods** (ver "Alterar um segredo").
