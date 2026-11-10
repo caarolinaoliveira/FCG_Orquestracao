@@ -14,6 +14,7 @@ data:
   # Banco das avaliações. O código tem o mesmo padrão (FCG_Catalogo); fica explícito aqui.
   MongoDB__Database: FCG_Catalogo
   Redis__ConnectionString: fcg-redis:6379
+  Elasticsearch__Url: http://fcg-elasticsearch:9200
   # Swagger em Production (para a demonstração). O prefixo próprio existe porque "/swagger" é do serviço de
   # Usuários e o Ingress só encaminha cada caminho a um serviço. Para desligar: "false" + remover a regra do Ingress.
   Swagger__Habilitado: "true"

@@ -159,6 +159,8 @@ services:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__DefaultConnection: Server=sqlserver,1433;Database=FCG_Catalogo;User Id=sa;Password=${SA_PASSWORD:?Defina SA_PASSWORD no arquivo .env};TrustServerCertificate=True;
       Redis__ConnectionString: redis:6379
+      # Sem depends_on do elasticsearch de propósito: sem ele a API sobe e só a busca responde 503.
+      Elasticsearch__Url: http://elasticsearch:9200
       NEW_RELIC_APP_NAME: FCG-CatalogoAPI
     ports:
       - "5133:8080"
