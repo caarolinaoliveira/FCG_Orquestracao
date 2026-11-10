@@ -11,7 +11,13 @@ data:
   RabbitMQ__Port: "5672"
   MongoDB__ConnectionString: mongodb://fcg-mongodb:27017
   MongoDB__EventLogDatabase: FCG_EventLog
+  # Banco das avaliações. O código tem o mesmo padrão (FCG_Catalogo); fica explícito aqui.
+  MongoDB__Database: FCG_Catalogo
   Redis__ConnectionString: fcg-redis:6379
+  # Swagger em Production (para a demonstração). O prefixo próprio existe porque "/swagger" é do serviço de
+  # Usuários e o Ingress só encaminha cada caminho a um serviço. Para desligar: "false" + remover a regra do Ingress.
+  Swagger__Habilitado: "true"
+  Swagger__RoutePrefix: swagger-catalogo
   JwtSettings__Emissor: FCG
   JwtSettings__Audiencia: FCG.Client
   JwtSettings__ExpiracaoHoras: "2"
