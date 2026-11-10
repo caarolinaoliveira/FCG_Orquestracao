@@ -104,14 +104,20 @@ if ($LimparImagensAntigas) {
         # ATENCAO: "crictl rmi <tag>" apaga a IMAGEM inteira (todas as tags dela). Se uma app nao mudou, a tag
         # antiga e a nova apontam para a MESMA imagem e o rmi apagaria tambem a tag atual. Por isso removemos
         # so o NOME da tag antiga com "ctr images rm", que apaga a referencia e preserva a imagem.
-        $itens = & docker exec $no crictl images 2>$null | Select-String 'docker.io/fcg/'
-        foreach ($i in $itens) {
-            $c = ($i.ToString() -split '\s+')
-            if ($c[1] -ne $Tag) {
-                & docker exec $no ctr -n k8s.io images rm "$($c[0]):$($c[1])" 2>$null | Out-Null
+        # No PS 5.1, com 'Stop', o stderr do docker/ctr vira erro fatal; a limpeza não pode derrubar o deploy.
+        $erroAnterior = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            $itens = & docker exec $no crictl images 2>$null | Select-String 'docker.io/fcg/'
+            foreach ($i in $itens) {
+                $c = ($i.ToString() -split '\s+')
+                # Imagem sem tag (<none>) não tem nome para remover.
+                if ($c[1] -eq $Tag -or $c[1] -eq '<none>') { continue }
+                & docker exec $no ctr -n k8s.io images rm "$($c[0]):$($c[1])" 2>&1 | Out-Null
                 Write-Host "  tag removida do no: $($c[0]):$($c[1])"
             }
         }
+        finally { $ErrorActionPreference = $erroAnterior }
     }
 }
 
