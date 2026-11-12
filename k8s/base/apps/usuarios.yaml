@@ -67,7 +67,7 @@ spec:
                 name: usuarios-secrets
           resources:
             requests:
-              cpu: 100m
+              cpu: 50m
               memory: 192Mi
             limits:
               cpu: 500m

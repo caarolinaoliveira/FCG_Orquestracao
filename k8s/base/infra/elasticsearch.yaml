@@ -44,7 +44,7 @@ spec:
               value: -Xms384m -Xmx384m
           resources:
             requests:
-              cpu: 200m
+              cpu: 100m
               memory: 896Mi
             limits:
               cpu: "1"

@@ -13,6 +13,7 @@ namespace: fcg
 resources:
   - ../../base
   - secretproviderclass.yaml
+  - nginx-default-controller.yaml
 
 # Tag de release das imagens (nunca "latest"). Para publicar uma nova versão:
 #   cd k8s/overlays/aks && kustomize edit set image fcgcarolina.azurecr.io/usuarios-api=fcgcarolina.azurecr.io/usuarios-api:1.0.1

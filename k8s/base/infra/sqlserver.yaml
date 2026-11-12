@@ -52,7 +52,7 @@ spec:
                   key: MSSQL_SA_PASSWORD
           resources:
             requests:
-              cpu: 250m
+              cpu: 100m
               memory: 1Gi
             limits:
               cpu: "1"

@@ -1,0 +1,13 @@
+# Ajusta o controlador NGINX "default" que o Application Routing já cria no cluster (CRD cluster-scoped).
+# Padrão do complemento: minReplicas 2. Como o cluster tem 1 nó e é temporário, 1 réplica poupa CPU.
+# ingressClassName e controllerNamePrefix são obrigatórios no CRD; repetem os valores do "default".
+apiVersion: approuting.kubernetes.azure.com/v1alpha1
+kind: NginxIngressController
+metadata:
+  name: default
+spec:
+  ingressClassName: webapprouting.kubernetes.azure.com
+  controllerNamePrefix: nginx
+  scaling:
+    minReplicas: 1
+    maxReplicas: 2
