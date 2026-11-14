@@ -168,7 +168,7 @@ Para limpar tudo: `kubectl --context docker-desktop delete -k k8s/overlays/local
 > ### ⚠️ Crie o cluster somente depois de a pipeline estar pronta
 > O AKS **gera cobrança enquanto existir** e, sem imagens publicadas no ACR (`fcgcarolina.azurecr.io`), todos os pods ficam em `ImagePullBackOff`. A ordem correta é: **(1)** pipeline de build e push das imagens para o ACR funcionando; **(2)** só então criar o cluster e aplicar o overlay. Enquanto isso, valide tudo no Docker Compose e no Kubernetes local.
 
-**Decisões já tomadas:** AKS na assinatura `fcg-aks-payg`, resource group `rg-fcg-aks`, East US, **1 nó `Standard_B2ms`** (2 vCPUs, 8 GB), plano **Free**, sem monitoramento, sem upgrades automáticos. Menor custo possível como prioridade.
+**Decisões já tomadas:** AKS na assinatura `fcg-aks-payg`, resource group `rg-fcg-aks`, East US, **1 nó `Standard_D2as_v4`** (2 vCPUs, 8 GB; a `Standard_B2ms` não é permitida nesta assinatura no East US e a família Basv2 não tinha cota), plano **Free**, sem monitoramento, sem upgrades automáticos. Menor custo possível como prioridade.
 
 | Item | Valor |
 |---|---|
@@ -248,7 +248,7 @@ O `jwt-secret` precisa ter **no mínimo 32 caracteres** (as APIs recusam iniciar
 
 ## Orçamento de recursos do nó
 
-O nó `Standard_B2ms` tem 2 vCPUs e 8 GB de RAM, mas nem tudo está disponível para os pods: o AKS reserva parte para o sistema. Os **requests** são o que o scheduler reserva (se a soma passar do alocável, o pod fica `Pending`); os **limits** são o teto de uso. Os requests de CPU foram reduzidos de 975 m para **460 m**, porque o uso real de CPU em repouso, medido no cluster local, foi de apenas ~31 m no total. Os requests de memória não foram alterados.
+O nó do AKS (`Standard_D2as_v4`) tem 2 vCPUs e 8 GB de RAM, mas nem tudo está disponível para os pods: o AKS reserva parte para o sistema. Os **requests** são o que o scheduler reserva (se a soma passar do alocável, o pod fica `Pending`); os **limits** são o teto de uso. Os requests de CPU foram reduzidos de 975 m para **460 m**, porque o uso real de CPU em repouso, medido no cluster local, foi de apenas ~31 m no total. Os requests de memória não foram alterados.
 
 | Pod | CPU request | Memória request | Memória limit | Uso medido (memória) |
 |---|---|---|---|---|
@@ -272,7 +272,18 @@ O nó `Standard_B2ms` tem 2 vCPUs e 8 GB de RAM, mas nem tudo está disponível 
 | Requests da aplicação e da infraestrutura | −3.104 Mi | −460 m |
 | **Sobra para os pods do sistema e o NGINX** | **~2.940 Mi** | **~1.440 m** |
 
-**Suposição sobre os pods do sistema.** CoreDNS, metrics-server, o driver CSI e o `secrets-store`, o operador do Application Routing e o próprio NGINX também têm requests, e **não foram medidos** (não é possível sem criar o cluster). Foi suposto que eles usem **até ~1,5 GiB de memória**; mesmo assim sobrariam ~1,4 GiB. Para CPU, o request do NGINX gerenciado **não foi verificado**; a suposição é de ~500 m por réplica, o que deixaria folga mesmo assim (por isso a réplica única, abaixo). Valide com os comandos do passo 7 de [Criar a infraestrutura no Azure](#criar-a-infraestrutura-no-azure-aks).
+**Suposição sobre os pods do sistema.** CoreDNS, metrics-server, o driver CSI e o `secrets-store`, o operador do Application Routing e o próprio NGINX também têm requests, e **não foram medidos** (não é possível sem criar o cluster). Foi suposto que eles usem **até ~1,5 GiB de memória**; mesmo assim sobrariam ~1,4 GiB. Para CPU, a suposição se mostrou otimista (veja o bloco seguinte). Valide com os comandos do passo 7 de [Criar a infraestrutura no Azure](#criar-a-infraestrutura-no-azure-aks).
+
+**CPU no AKS: ajuste do overlay.** No cluster real, dos ~1.900 m alocáveis já havia **1.886 m reservados** e o `usuarios-api` ficou `Pending` com "Insufficient cpu": além dos 460 m das aplicações e da infraestrutura, o NGINX do Application Routing reserva **500 m sozinho** e os pods do sistema do AKS consomem o restante. Por isso o overlay [`k8s/overlays/aks/cpu-requests.yaml`](k8s/overlays/aks/cpu-requests.yaml) reduz **só os requests de CPU** de quatro pods de infraestrutura, sem mexer em limits nem em memória:
+
+| Pod | Base e local | Overlay `aks` |
+|---|---|---|
+| elasticsearch | 100 m | **50 m** |
+| sqlserver | 100 m | **50 m** |
+| mongodb | 50 m | **25 m** |
+| rabbitmq | 50 m | **25 m** |
+
+São 150 m liberados (460 m → 310 m), o que deixa ~165 m livres. Essa folga é necessária para o *rolling update*: com `maxSurge: 1`, o pod novo (50 m) sobe **antes** de o antigo sair, e sem sobra ele ficaria `Pending`. Os requests continuam acima do uso medido em repouso (~31 m no total); o limit de CPU de cada pod segue permitindo rajadas. A base e o overlay local não mudam.
 
 Fontes: [reservas de recursos dos nós do AKS](https://learn.microsoft.com/en-us/azure/aks/node-resource-reservations) e [limites e requests no Kubernetes](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/).
 
@@ -282,7 +293,7 @@ Volumes persistentes: SQL Server 5 Gi, MongoDB 2 Gi, RabbitMQ 1 Gi. Redis não t
 
 O Ingress usa o NGINX gerenciado do **Application Routing** do AKS. O projeto upstream `kubernetes/ingress-nginx` foi aposentado (manutenção encerrada em março de 2026), e a Microsoft **mantém apenas correções críticas de segurança do NGINX do Application Routing até 30/11/2026**. Depois disso, ele deixa de ter suporte. Como o cluster desta entrega é **temporário**, decidiu-se manter o NGINX agora; não há ação imediata.
 
-**Em produção**, a migração prevista é para a **Gateway API do Application Routing** (`GatewayClass` `approuting-istio`), que implanta um plano de controle **Istio** sem sidecars. A migração não exige janela de indisponibilidade, mas a Gateway API não aceita os recursos do NGINX por anotação (limite de corpo, Lua, rate limit), e cada Gateway cria HPA com no mínimo 2 réplicas, o que pesa num nó `Standard_B2ms`.
+**Em produção**, a migração prevista é para a **Gateway API do Application Routing** (`GatewayClass` `approuting-istio`), que implanta um plano de controle **Istio** sem sidecars. A migração não exige janela de indisponibilidade, mas a Gateway API não aceita os recursos do NGINX por anotação (limite de corpo, Lua, rate limit), e cada Gateway cria HPA com no mínimo 2 réplicas, o que pesa num nó de 2 vCPUs e 8 GB.
 
 **Uma réplica do NGINX.** O padrão do complemento é `minReplicas: 2`. Com um único nó, a segunda réplica só consome CPU, então [`k8s/overlays/aks/nginx-default-controller.yaml`](k8s/overlays/aks/nginx-default-controller.yaml) ajusta o `NginxIngressController` chamado `default` (criado pelo próprio complemento) com `spec.scaling.minReplicas: 1` e `spec.scaling.maxReplicas: 2`. O `kubectl apply -k k8s/overlays/aks` do passo 6 já aplica esse ajuste. Se o cluster for criado sem o overlay, use `kubectl edit nginxingresscontroller default`.
 

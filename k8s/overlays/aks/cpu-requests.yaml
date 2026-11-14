@@ -1,0 +1,52 @@
+# Só no AKS: o nó (2 vCPUs) tem pouca CPU alocável e o NGINX do Application Routing reserva 500m. Limits e memória ficam como na base.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+spec:
+  template:
+    spec:
+      containers:
+        - name: elasticsearch
+          resources:
+            requests:
+              cpu: 50m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sqlserver
+spec:
+  template:
+    spec:
+      containers:
+        - name: sqlserver
+          resources:
+            requests:
+              cpu: 50m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+spec:
+  template:
+    spec:
+      containers:
+        - name: mongodb
+          resources:
+            requests:
+              cpu: 25m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+spec:
+  template:
+    spec:
+      containers:
+        - name: rabbitmq
+          resources:
+            requests:
+              cpu: 25m

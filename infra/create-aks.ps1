@@ -10,7 +10,7 @@
     0. Pré-checagens (somente leitura): login, tenant, assinaturas, ACR, Key Vault (RBAC).
     1. Garante os provedores de recurso registrados na assinatura do cluster.
     2. Cria o resource group (se não existir).
-    3. az aks create (1 nó Standard_B2ms, plano Free, sem monitoramento, sem upgrades automáticos,
+    3. az aks create (1 nó Standard_D2as_v4, plano Free, sem monitoramento, sem upgrades automáticos,
        Key Vault Secrets Provider, Application Routing e acesso ao ACR).
     4. Baixa as credenciais do cluster para o kubeconfig.
     5. Concede "Key Vault Secrets User" à identidade do complemento no Key Vault.
@@ -89,7 +89,7 @@ $aksCreate = @(
     '--name', $ClusterName,                        # nome do cluster
     '--location', $Location,                       # -l: regiao (East US)
     '--node-count', '1',                           # 1 no: menor custo (sem alta disponibilidade)
-    '--node-vm-size', 'Standard_B2ms',             # VM burstable de 2 vCPUs e 8 GB: o item mais caro; desligue com stop-aks.ps1 quando nao usar
+    '--node-vm-size', 'Standard_D2as_v4',             # VM de 2 vCPUs e 8 GB (a B2ms nao e permitida na assinatura no East US e a familia Basv2 estava sem cota): o item mais caro; desligue com stop-aks.ps1 quando nao usar
     '--node-osdisk-size', '32',                    # disco do SO em GB (padrao e 128): menor disco, menor custo
     '--tier', 'free',                              # plano Free: control plane sem custo (sem SLA)
     '--auto-upgrade-channel', 'none',              # nao atualiza a versao do Kubernetes sozinho (evita reinicios surpresa)
