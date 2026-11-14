@@ -168,7 +168,7 @@ Para limpar tudo: `kubectl --context docker-desktop delete -k k8s/overlays/local
 > ### ⚠️ Crie o cluster somente depois de a pipeline estar pronta
 > O AKS **gera cobrança enquanto existir** e, sem imagens publicadas no ACR (`fcgcarolina.azurecr.io`), todos os pods ficam em `ImagePullBackOff`. A ordem correta é: **(1)** pipeline de build e push das imagens para o ACR funcionando; **(2)** só então criar o cluster e aplicar o overlay. Enquanto isso, valide tudo no Docker Compose e no Kubernetes local.
 
-**Decisões já tomadas:** AKS na assinatura `fcg-aks-payg`, resource group `rg-fcg-aks`, East US, **1 nó `Standard_B2ms`** (2 vCPUs, 8 GB), plano **Free**, sem monitoramento, sem upgrades automáticos. Menor custo possível como prioridade.
+**Decisões já tomadas:** AKS na assinatura `fcg-aks-payg`, resource group `rg-fcg-aks`, East US, **1 nó `Standard_D2as_v4`** (2 vCPUs, 8 GB; a `Standard_B2ms` não é permitida nesta assinatura no East US e a família Basv2 não tinha cota), plano **Free**, sem monitoramento, sem upgrades automáticos. Menor custo possível como prioridade.
 
 | Item | Valor |
 |---|---|
@@ -293,7 +293,7 @@ Volumes persistentes: SQL Server 5 Gi, MongoDB 2 Gi, RabbitMQ 1 Gi. Redis não t
 
 O Ingress usa o NGINX gerenciado do **Application Routing** do AKS. O projeto upstream `kubernetes/ingress-nginx` foi aposentado (manutenção encerrada em março de 2026), e a Microsoft **mantém apenas correções críticas de segurança do NGINX do Application Routing até 30/11/2026**. Depois disso, ele deixa de ter suporte. Como o cluster desta entrega é **temporário**, decidiu-se manter o NGINX agora; não há ação imediata.
 
-**Em produção**, a migração prevista é para a **Gateway API do Application Routing** (`GatewayClass` `approuting-istio`), que implanta um plano de controle **Istio** sem sidecars. A migração não exige janela de indisponibilidade, mas a Gateway API não aceita os recursos do NGINX por anotação (limite de corpo, Lua, rate limit), e cada Gateway cria HPA com no mínimo 2 réplicas, o que pesa num nó `Standard_B2ms`.
+**Em produção**, a migração prevista é para a **Gateway API do Application Routing** (`GatewayClass` `approuting-istio`), que implanta um plano de controle **Istio** sem sidecars. A migração não exige janela de indisponibilidade, mas a Gateway API não aceita os recursos do NGINX por anotação (limite de corpo, Lua, rate limit), e cada Gateway cria HPA com no mínimo 2 réplicas, o que pesa num nó de 2 vCPUs e 8 GB.
 
 **Uma réplica do NGINX.** O padrão do complemento é `minReplicas: 2`. Com um único nó, a segunda réplica só consome CPU, então [`k8s/overlays/aks/nginx-default-controller.yaml`](k8s/overlays/aks/nginx-default-controller.yaml) ajusta o `NginxIngressController` chamado `default` (criado pelo próprio complemento) com `spec.scaling.minReplicas: 1` e `spec.scaling.maxReplicas: 2`. O `kubectl apply -k k8s/overlays/aks` do passo 6 já aplica esse ajuste. Se o cluster for criado sem o overlay, use `kubectl edit nginxingresscontroller default`.
 
