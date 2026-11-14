@@ -248,7 +248,7 @@ O `jwt-secret` precisa ter **no mínimo 32 caracteres** (as APIs recusam iniciar
 
 ## Orçamento de recursos do nó
 
-O nó `Standard_B2ms` tem 2 vCPUs e 8 GB de RAM, mas nem tudo está disponível para os pods: o AKS reserva parte para o sistema. Os **requests** são o que o scheduler reserva (se a soma passar do alocável, o pod fica `Pending`); os **limits** são o teto de uso. Os requests de CPU foram reduzidos de 975 m para **460 m**, porque o uso real de CPU em repouso, medido no cluster local, foi de apenas ~31 m no total. Os requests de memória não foram alterados.
+O nó do AKS (`Standard_D2as_v4`) tem 2 vCPUs e 8 GB de RAM, mas nem tudo está disponível para os pods: o AKS reserva parte para o sistema. Os **requests** são o que o scheduler reserva (se a soma passar do alocável, o pod fica `Pending`); os **limits** são o teto de uso. Os requests de CPU foram reduzidos de 975 m para **460 m**, porque o uso real de CPU em repouso, medido no cluster local, foi de apenas ~31 m no total. Os requests de memória não foram alterados.
 
 | Pod | CPU request | Memória request | Memória limit | Uso medido (memória) |
 |---|---|---|---|---|
@@ -272,7 +272,18 @@ O nó `Standard_B2ms` tem 2 vCPUs e 8 GB de RAM, mas nem tudo está disponível 
 | Requests da aplicação e da infraestrutura | −3.104 Mi | −460 m |
 | **Sobra para os pods do sistema e o NGINX** | **~2.940 Mi** | **~1.440 m** |
 
-**Suposição sobre os pods do sistema.** CoreDNS, metrics-server, o driver CSI e o `secrets-store`, o operador do Application Routing e o próprio NGINX também têm requests, e **não foram medidos** (não é possível sem criar o cluster). Foi suposto que eles usem **até ~1,5 GiB de memória**; mesmo assim sobrariam ~1,4 GiB. Para CPU, o request do NGINX gerenciado **não foi verificado**; a suposição é de ~500 m por réplica, o que deixaria folga mesmo assim (por isso a réplica única, abaixo). Valide com os comandos do passo 7 de [Criar a infraestrutura no Azure](#criar-a-infraestrutura-no-azure-aks).
+**Suposição sobre os pods do sistema.** CoreDNS, metrics-server, o driver CSI e o `secrets-store`, o operador do Application Routing e o próprio NGINX também têm requests, e **não foram medidos** (não é possível sem criar o cluster). Foi suposto que eles usem **até ~1,5 GiB de memória**; mesmo assim sobrariam ~1,4 GiB. Para CPU, a suposição se mostrou otimista (veja o bloco seguinte). Valide com os comandos do passo 7 de [Criar a infraestrutura no Azure](#criar-a-infraestrutura-no-azure-aks).
+
+**CPU no AKS: ajuste do overlay.** No cluster real, dos ~1.900 m alocáveis já havia **1.886 m reservados** e o `usuarios-api` ficou `Pending` com "Insufficient cpu": além dos 460 m das aplicações e da infraestrutura, o NGINX do Application Routing reserva **500 m sozinho** e os pods do sistema do AKS consomem o restante. Por isso o overlay [`k8s/overlays/aks/cpu-requests.yaml`](k8s/overlays/aks/cpu-requests.yaml) reduz **só os requests de CPU** de quatro pods de infraestrutura, sem mexer em limits nem em memória:
+
+| Pod | Base e local | Overlay `aks` |
+|---|---|---|
+| elasticsearch | 100 m | **50 m** |
+| sqlserver | 100 m | **50 m** |
+| mongodb | 50 m | **25 m** |
+| rabbitmq | 50 m | **25 m** |
+
+São 150 m liberados (460 m → 310 m), o que deixa ~165 m livres. Essa folga é necessária para o *rolling update*: com `maxSurge: 1`, o pod novo (50 m) sobe **antes** de o antigo sair, e sem sobra ele ficaria `Pending`. Os requests continuam acima do uso medido em repouso (~31 m no total); o limit de CPU de cada pod segue permitindo rajadas. A base e o overlay local não mudam.
 
 Fontes: [reservas de recursos dos nós do AKS](https://learn.microsoft.com/en-us/azure/aks/node-resource-reservations) e [limites e requests no Kubernetes](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/).
 
