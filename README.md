@@ -220,6 +220,9 @@ Para limpar tudo: `kubectl --context docker-desktop delete -k k8s/overlays/local
 | Pod em `ContainerCreating` com erro de `SecretProviderClass`/CSI | `userAssignedIdentityID` ainda é o texto de preenchimento, ou faltou o papel *Key Vault Secrets User* no cofre |
 | Pod em `ImagePullBackOff` | Imagem/tag inexistente no ACR, ou o `--attach-acr` não foi concedido |
 | Pod em `CreateContainerConfigError` | Secret ainda não sincronizado (nenhum pod montou o volume CSI) |
+| RabbitMQ em `CrashLoopBackOff` com `Cookie file /var/lib/rabbitmq/.erlang.cookie must be accessible by owner only` | Ao remontar o disco da Azure, o `fsGroup` do pod refaz as permissões dos arquivos e deixa o cookie com acesso de grupo; o Erlang exige modo 600. Corrigido na base (veja abaixo) |
+
+**RabbitMQ e o cookie do Erlang.** No cluster local o problema não aparece, porque o disco do Docker Desktop não aplica o `fsGroup`; o disco da Azure aplica. Por isso o Deployment do RabbitMQ tem `fsGroupChangePolicy: OnRootMismatch` (o kubelet só refaz as permissões se a raiz do volume estiver diferente, em vez de a cada montagem) e o initContainer `corrigir-cookie-erlang`, que devolve o `.erlang.cookie` ao usuário `rabbitmq` (999) com modo 600 antes de o broker subir; se o arquivo ainda não existe (primeiro uso do volume), ele não faz nada.
 
 ## Segredos: do Key Vault ao pod
 
