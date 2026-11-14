@@ -19,14 +19,14 @@ resources:
 #   cd k8s/overlays/aks && kustomize edit set image fcgcarolina.azurecr.io/usuarios-api=fcgcarolina.azurecr.io/usuarios-api:1.0.1
 images:
   - name: fcgcarolina.azurecr.io/usuarios-api
-    newTag: "4463cc31c30cf77853e88d03443a55bbc7ff953d"
+    newTag: "07d8188d30e20fe38ad72590895655bffe03e6ca"
   - name: fcgcarolina.azurecr.io/catalogo-api
     newTag: "50c534fcdfd5f8467f24bca4875384ade7ad92a5"
   - name: fcgcarolina.azurecr.io/pagamentos-worker
     newTag: "4c25049ef9a8cf35603fe90ca4e8c2563faa694f"
   - name: fcgcarolina.azurecr.io/notificacoes-worker
     newTag: "1fd1395b0b38614ba25a4114b062743c450bd57e"
-    
+
 patches:
   - path: csi-volumes.yaml
   - path: cpu-requests.yaml

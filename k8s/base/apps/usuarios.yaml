@@ -10,6 +10,10 @@ data:
   MongoDB__ConnectionString: mongodb://fcg-mongodb:27017
   MongoDB__EventLogDatabase: FCG_EventLog
   Redis__ConnectionString: fcg-redis:6379
+  # Swagger em Production (para a demonstração), com prefixo próprio porque o Ingress só encaminha cada caminho
+  # a um serviço. Para desligar: "false" + remover a regra do Ingress.
+  Swagger__Habilitado: "true"
+  Swagger__RoutePrefix: swagger-usuarios
   JwtSettings__Emissor: FCG
   JwtSettings__Audiencia: FCG.Client
   JwtSettings__ExpiracaoHoras: "2"

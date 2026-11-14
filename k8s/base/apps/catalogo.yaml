@@ -15,8 +15,8 @@ data:
   MongoDB__Database: FCG_Catalogo
   Redis__ConnectionString: fcg-redis:6379
   Elasticsearch__Url: http://fcg-elasticsearch:9200
-  # Swagger em Production (para a demonstração). O prefixo próprio existe porque "/swagger" é do serviço de
-  # Usuários e o Ingress só encaminha cada caminho a um serviço. Para desligar: "false" + remover a regra do Ingress.
+  # Swagger em Production (para a demonstração), com prefixo próprio porque o Ingress só encaminha cada caminho
+  # a um serviço. Para desligar: "false" + remover a regra do Ingress.
   Swagger__Habilitado: "true"
   Swagger__RoutePrefix: swagger-catalogo
   JwtSettings__Emissor: FCG

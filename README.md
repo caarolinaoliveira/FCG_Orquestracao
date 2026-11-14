@@ -70,7 +70,7 @@ infra/
 
 ## Rotas do Ingress
 
-O Ingress não usa `host` (atende pelo IP do controlador) e **não expõe** `/health`, o Swagger do serviço de Usuários nem o painel do RabbitMQ.
+O Ingress não usa `host` (atende pelo IP do controlador) e **não expõe** `/health` nem o painel do RabbitMQ.
 
 | Prefixo | Serviço | Rotas |
 |---|---|---|
@@ -79,8 +79,9 @@ O Ingress não usa `host` (atende pelo IP do controlador) e **não expõe** `/he
 | `/api/biblioteca` | `catalogo-api` | `GET {usuarioId}` (autenticado) |
 | `/api/pedidos` | `catalogo-api` | `POST {jogoId}?usuarioId=`, `GET usuario/{usuarioId}` (autenticado) |
 | `/swagger-catalogo` | `catalogo-api` | Swagger UI e definição do Catálogo (`/swagger-catalogo/index.html`, `/swagger-catalogo/v1/swagger.json`) |
+| `/swagger-usuarios` | `usuarios-api` | Swagger UI e definição de Usuários (`/swagger-usuarios/index.html`, `/swagger-usuarios/v1/swagger.json`) |
 
-O Swagger do Catálogo usa o prefixo próprio `swagger-catalogo` porque `/swagger` pertence ao serviço de Usuários e o Ingress só pode enviar cada caminho a um serviço. Ele é ligado pelo ConfigMap `catalogo-config` (`Swagger__Habilitado`, `Swagger__RoutePrefix`); para desligar, ponha `Swagger__Habilitado` em `"false"` e remova a regra do Ingress. As regras de autorização do Catálogo estão no [README do Catálogo](https://github.com/caarolinaoliveira/FCG_Catalogo#autoriza%C3%A7%C3%A3o).
+Cada serviço usa o seu prefixo (`swagger-catalogo` e `swagger-usuarios`) porque o Ingress só pode enviar cada caminho a um serviço, então não dá para os dois ocuparem `/swagger`. Eles são ligados pelos ConfigMaps `catalogo-config` e `usuarios-config` (`Swagger__Habilitado`, `Swagger__RoutePrefix`); para desligar um deles, ponha `Swagger__Habilitado` em `"false"` e remova a regra do Ingress. As regras de autorização do Catálogo estão no [README do Catálogo](https://github.com/caarolinaoliveira/FCG_Catalogo#autoriza%C3%A7%C3%A3o).
 
 As probes do Kubernetes usam `GET /health` direto no pod (porta 8080), sem passar pelo Ingress.
 
@@ -320,7 +321,7 @@ Decisões conscientes, registradas aqui para não serem esquecidas:
 - **Sem monitoramento da Azure e sem agente de infraestrutura do New Relic**, para poupar custo e memória. A observabilidade das aplicações é feita pelo New Relic APM.
 - **Identidade do usuário nas rotas do Catálogo.** Criar, alterar e apagar jogos exige a role `Admin`, e biblioteca, pedidos e avaliações exigem login. Porém o token JWT só traz o e-mail e a role, **não o id do usuário**, então as rotas que recebem `usuarioId` não verificam se ele pertence a quem está logado: qualquer usuário autenticado que souber o GUID de outro pode consultar a biblioteca dele ou comprar e avaliar em seu nome. Para corrigir, o serviço de Usuários precisa colocar o id no token.
 - **Não existe administrador de fábrica.** O `registrar` só atribui a role `Usuario`; um `Admin` é criado promovendo o usuário por SQL no banco `FCG_Usuarios` (ver o [README do Catálogo](https://github.com/caarolinaoliveira/FCG_Catalogo#autoriza%C3%A7%C3%A3o)).
-- **Swagger do Catálogo exposto publicamente** pelo Ingress (`/swagger-catalogo`), habilitado para a demonstração. Ele documenta a API, mas não dá acesso às rotas protegidas sem token. Desligue depois da demonstração (ver "Rotas do Ingress").
+- **Swagger do Catálogo e de Usuários expostos publicamente** pelo Ingress (`/swagger-catalogo` e `/swagger-usuarios`), habilitados para a demonstração. Eles documentam as APIs, mas não dão acesso às rotas protegidas sem token. Desligue depois da demonstração (ver "Rotas do Ingress").
 - **Busca por título exata × busca fuzzy.** `GET /api/jogos/buscar/{titulo}` compara o título inteiro; a busca com tolerância a erros de digitação é `GET /api/jogos/search?q=` (Elasticsearch). Se o Elasticsearch estiver fora do ar, só ela responde `503`; o CRUD continua.
 - **NGINX do Application Routing com prazo de suporte.** Veja a seção [NGINX do Application Routing: suporte até 30/11/2026](#nginx-do-application-routing-suporte-até-30112026).
 - **Ingress controller local aposentado.** O ingress-nginx usado no teste local não recebe mais atualizações (ver acima). Não afeta o AKS.
