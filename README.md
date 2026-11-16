@@ -4,18 +4,34 @@ Repositório de orquestração da plataforma **FIAP Cloud Games** (Pós Tech .NE
 
 > A versão da Fase 3 (Kong, LocalStack, Lambda/SQS) está na tag `fase-3` dos repositórios.
 
+## Estado atual do ambiente
+
+A Fase 4 foi gravada em vídeo em **15/11/2026** e, logo depois, o cluster **`aks-fcg` foi apagado** para não gerar custo.
+
+| Recurso | Situação |
+|---|---|
+| Cluster AKS `aks-fcg` | **Apagado** após a gravação |
+| ACR `fcgcarolina` | Existe, com as imagens publicadas pelos pipelines |
+| Key Vault `kv-fcg-carolina` | Existe, com os segredos |
+
+- Enquanto o cluster não existir, o job `deploy` dos pipelines **falha** (ele consulta o estado do cluster com `az aks show`). Build, testes, Trivy e publicação da imagem no ACR continuam funcionando.
+- O cluster pode ser recriado a qualquer momento com os scripts deste repositório: veja [Recriar o ambiente no AKS](#recriar-o-ambiente-no-aks).
+
 ## Sumário
 
-1. [Arquitetura](#arquitetura)
-2. [Estrutura do repositório](#estrutura-do-repositório)
-3. [Rotas do Ingress](#rotas-do-ingress)
-4. [Rodar com Docker Compose](#rodar-com-docker-compose)
-5. [Rodar no Kubernetes local (Docker Desktop)](#rodar-no-kubernetes-local-docker-desktop)
-6. [Criar a infraestrutura no Azure (AKS)](#criar-a-infraestrutura-no-azure-aks)
-7. [Segredos: do Key Vault ao pod](#segredos-do-key-vault-ao-pod)
-8. [Orçamento de recursos do nó](#orçamento-de-recursos-do-nó)
-9. [NGINX do Application Routing: suporte até 30/11/2026](#nginx-do-application-routing-suporte-até-30112026)
-10. [Limitações conhecidas](#limitações-conhecidas)
+1. [Estado atual do ambiente](#estado-atual-do-ambiente)
+2. [Arquitetura](#arquitetura)
+3. [Estrutura do repositório](#estrutura-do-repositório)
+4. [Rotas do Ingress](#rotas-do-ingress)
+5. [Rodar com Docker Compose](#rodar-com-docker-compose)
+6. [Rodar no Kubernetes local (Docker Desktop)](#rodar-no-kubernetes-local-docker-desktop)
+7. [Criar a infraestrutura no Azure (AKS)](#criar-a-infraestrutura-no-azure-aks)
+8. [Recriar o ambiente no AKS](#recriar-o-ambiente-no-aks)
+9. [Problemas encontrados no AKS e como foram resolvidos](#problemas-encontrados-no-aks-e-como-foram-resolvidos)
+10. [Segredos: do Key Vault ao pod](#segredos-do-key-vault-ao-pod)
+11. [Orçamento de recursos do nó](#orçamento-de-recursos-do-nó)
+12. [NGINX do Application Routing: suporte até 30/11/2026](#nginx-do-application-routing-suporte-até-30112026)
+13. [Limitações conhecidas](#limitações-conhecidas)
 
 ## Arquitetura
 
@@ -166,10 +182,10 @@ Para limpar tudo: `kubectl --context docker-desktop delete -k k8s/overlays/local
 
 ## Criar a infraestrutura no Azure (AKS)
 
-> ### ⚠️ Crie o cluster somente depois de a pipeline estar pronta
-> O AKS **gera cobrança enquanto existir** e, sem imagens publicadas no ACR (`fcgcarolina.azurecr.io`), todos os pods ficam em `ImagePullBackOff`. A ordem correta é: **(1)** pipeline de build e push das imagens para o ACR funcionando; **(2)** só então criar o cluster e aplicar o overlay. Enquanto isso, valide tudo no Docker Compose e no Kubernetes local.
+> ### ⚠️ O AKS gera cobrança enquanto existir
+> Sem imagens publicadas no ACR (`fcgcarolina.azurecr.io`), todos os pods ficam em `ImagePullBackOff`. Os pipelines já publicam as imagens, então o cluster só precisa ser criado quando for usado, e apagado (ou desligado com `stop-aks.ps1`) depois. Para um resumo rápido, veja [Recriar o ambiente no AKS](#recriar-o-ambiente-no-aks).
 
-**Decisões já tomadas:** AKS na assinatura `fcg-aks-payg`, resource group `rg-fcg-aks`, East US, **1 nó `Standard_D2as_v4`** (2 vCPUs, 8 GB; a `Standard_B2ms` não é permitida nesta assinatura no East US e a família Basv2 não tinha cota), plano **Free**, sem monitoramento, sem upgrades automáticos. Menor custo possível como prioridade.
+**Decisões já tomadas:** AKS na assinatura `fcg-aks-payg`, resource group `rg-fcg-aks`, East US, **1 nó `Standard_D2as_v4`** (2 vCPUs, 8 GB; a `Standard_B2ms` não é permitida nesta assinatura no East US e a família Basv2 não tinha cota), **disco do SO de 64 GB** (com 32 GB o nó despejava pods por falta de `ephemeral-storage`), plano **Free**, sem monitoramento, sem upgrades automáticos. Menor custo possível como prioridade.
 
 | Item | Valor |
 |---|---|
@@ -194,7 +210,7 @@ Para limpar tudo: `kubectl --context docker-desktop delete -k k8s/overlays/local
    ```powershell
    az aks show --subscription fcg-aks-payg -g rg-fcg-aks -n aks-fcg --query "addonProfiles.azureKeyvaultSecretsProvider.identity.clientId" -o tsv
    ```
-   Troque o texto `PREENCHER-CLIENT-ID-DA-IDENTIDADE-DO-COMPLEMENTO` em `k8s/overlays/aks/secretproviderclass.yaml` por esse valor.
+   Coloque esse valor em `userAssignedIdentityID` em `k8s/overlays/aks/secretproviderclass.yaml`. **Cada cluster novo tem uma identidade nova**, então o valor que está no arquivo (do cluster apagado) precisa ser trocado a cada recriação.
 5. **Garanta que as imagens estão no ACR** com a tag definida em `k8s/overlays/aks/kustomization.yaml` (o `newTag` de cada imagem; os pipelines publicam o SHA do commit). Para outra versão: `kustomize edit set image fcgcarolina.azurecr.io/usuarios-api=fcgcarolina.azurecr.io/usuarios-api:<tag>` dentro de `k8s/overlays/aks`. **Nunca use `latest`** e **use uma tag nova a cada build** (o SHA do commit, por exemplo): o nó do AKS também guarda imagens em cache por tag, então reutilizar uma tag pode manter o pod rodando a imagem antiga, o mesmo problema descrito na seção do Kubernetes local.
 6. **Aplique e verifique** (antes, atualize os `newTag`, como explica a seção [Deploy das aplicações pelos pipelines](#deploy-das-aplicações-pelos-pipelines)):
    ```powershell
@@ -216,7 +232,7 @@ Para limpar tudo: `kubectl --context docker-desktop delete -k k8s/overlays/local
 
 ### Deploy das aplicações pelos pipelines
 
-O deploy das quatro aplicações (`usuarios-api`, `catalogo-api`, `pagamentos-worker`, `notificacoes-worker`) agora é feito pelo job `deploy` do `ci-cd.yml` de cada repositório. A cada push na `master`, depois de publicar a imagem no ACR, o job troca a imagem do Deployment no cluster (`kubectl -n fcg set image`) pela tag igual ao SHA do commit e aguarda o `rollout status` por até 5 minutos; se o rollout falhar, o job falha. Se o cluster estiver parado (`.\infra\stop-aks.ps1`), o job só emite um aviso de que a imagem foi publicada e termina com sucesso. O deploy não é refeito depois: ligue o cluster e rode o workflow de novo (`workflow_dispatch`) ou faça um novo push.
+O deploy das quatro aplicações (`usuarios-api`, `catalogo-api`, `pagamentos-worker`, `notificacoes-worker`) agora é feito pelo job `deploy` do `ci-cd.yml` de cada repositório. A cada push na `master`, depois de publicar a imagem no ACR, o job troca a imagem do Deployment no cluster (`kubectl -n fcg set image`) pela tag igual ao SHA do commit e aguarda o `rollout status` por até 5 minutos; se o rollout falhar, o job falha. Se o cluster estiver parado (`.\infra\stop-aks.ps1`), o job só emite um aviso de que a imagem foi publicada e termina com sucesso. O deploy não é refeito depois: ligue o cluster e rode o workflow de novo (`workflow_dispatch`) ou faça um novo push. Se o cluster **não existir** (como agora, depois de apagado), o job **falha**, porque não consegue consultar o estado dele; a imagem já foi publicada antes disso.
 
 O pipeline só altera a imagem. ConfigMaps, Ingress e os demais manifestos continuam vindo deste repositório, via `kubectl apply -k k8s/overlays/aks`.
 
@@ -236,6 +252,57 @@ O pipeline só altera a imagem. ConfigMaps, Ingress e os demais manifestos conti
 | RabbitMQ em `CrashLoopBackOff` com `Cookie file /var/lib/rabbitmq/.erlang.cookie must be accessible by owner only` | Ao remontar o disco da Azure, o `fsGroup` do pod refaz as permissões dos arquivos e deixa o cookie com acesso de grupo; o Erlang exige modo 600. Corrigido na base (veja abaixo) |
 
 **RabbitMQ e o cookie do Erlang.** No cluster local o problema não aparece, porque o disco do Docker Desktop não aplica o `fsGroup`; o disco da Azure aplica. Por isso o Deployment do RabbitMQ tem `fsGroupChangePolicy: OnRootMismatch` (o kubelet só refaz as permissões se a raiz do volume estiver diferente, em vez de a cada montagem) e o initContainer `corrigir-cookie-erlang`, que devolve o `.erlang.cookie` ao usuário `rabbitmq` (999) com modo 600 antes de o broker subir; se o arquivo ainda não existe (primeiro uso do volume), ele não faz nada.
+
+## Recriar o ambiente no AKS
+
+Resumo dos passos (os detalhes e as explicações estão em [Criar a infraestrutura no Azure](#criar-a-infraestrutura-no-azure-aks)). O cluster cobra enquanto existir.
+
+1. **Criar o cluster** (nó `Standard_D2as_v4`, disco do SO de 64 GB):
+   ```powershell
+   .\infra\create-aks.ps1
+   ```
+2. **Copiar o client ID** que o script mostra no final para `userAssignedIdentityID` em `k8s/overlays/aks/secretproviderclass.yaml`. Cada cluster novo tem uma identidade nova.
+3. **Atualizar os `newTag`** de `k8s/overlays/aks/kustomization.yaml` com as tags mais recentes do ACR:
+   ```powershell
+   foreach ($repo in 'usuarios-api', 'catalogo-api', 'pagamentos-worker', 'notificacoes-worker') {
+     "$repo : " + (az acr repository show-tags --subscription "Azure for Students" --name fcgcarolina --repository $repo --orderby time_desc --top 1 -o tsv)
+   }
+   ```
+4. **Aplicar e conferir:**
+   ```powershell
+   kubectl apply -k k8s/overlays/aks
+   kubectl get pods -n fcg
+   ```
+5. **Liberar o deploy dos pipelines.** Dê à identidade `github-fcg-deploy` a função *Azure Kubernetes Service Cluster User Role* no **novo** cluster (a atribuição anterior sumiu junto com o cluster antigo):
+   ```powershell
+   $aksId = az aks show --subscription fcg-aks-payg -g rg-fcg-aks -n aks-fcg --query id -o tsv
+   az role assignment create --assignee "<client-id-da-identidade-github-fcg-deploy>" --role "Azure Kubernetes Service Cluster User Role" --scope $aksId
+   ```
+   Na prática essa função foi **suficiente**: o cluster foi criado sem integração com o Entra ID (sem Azure RBAC para o Kubernetes), e o deploy pelos pipelines funcionou nos quatro serviços. Um cluster **com** Entra ID precisaria de uma função a mais para o `kubectl set image` e o `rollout status`.
+6. **Criar o administrador:** registre o usuário normalmente e promova-o por SQL no pod do SQL Server (regra completa em [Autorização, no README do Catálogo](https://github.com/caarolinaoliveira/FCG_Catalogo#autoriza%C3%A7%C3%A3o)). Primeiro entre no pod:
+   ```powershell
+   kubectl -n fcg exec -it deploy/sqlserver -- bash
+   ```
+   Dentro dele, abra o `sqlcmd` e rode o `INSERT`:
+   ```bash
+   /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d FCG_Usuarios
+   ```
+   ```sql
+   INSERT INTO AspNetUserRoles (UserId, RoleId)
+   SELECT u.Id, r.Id FROM AspNetUsers u, AspNetRoles r
+   WHERE u.Email = 'admin@example.com' AND r.Name = 'Admin';
+   GO
+   ```
+   A senha vem da variável de ambiente `MSSQL_SA_PASSWORD` do próprio pod, então não é digitada nem aparece na tela. Promova o usuário **antes do primeiro login dele**: as roles ficam em cache por 5 minutos no login.
+
+## Problemas encontrados no AKS e como foram resolvidos
+
+| Problema | Solução |
+|---|---|
+| `Standard_B2ms` não permitida na assinatura e sem cota para a família Basv2 | Nó `Standard_D2as_v4` |
+| `usuarios-api` em `Pending` por `Insufficient cpu` (o NGINX do Application Routing reserva 500 m) | Patch [`cpu-requests.yaml`](k8s/overlays/aks/cpu-requests.yaml) no overlay `aks` (veja [Orçamento de recursos do nó](#orçamento-de-recursos-do-nó)) |
+| RabbitMQ em `CrashLoopBackOff` por permissão do `.erlang.cookie` ao remontar o disco | `fsGroupChangePolicy: OnRootMismatch` e initContainer `corrigir-cookie-erlang` (veja acima) |
+| Nó com disco de 32 GB despejando pods por falta de `ephemeral-storage` ao baixar as imagens | Disco do SO de 64 GB (`--node-osdisk-size 64` em `create-aks.ps1`) |
 
 ## Segredos: do Key Vault ao pod
 
@@ -326,6 +393,7 @@ Fontes:
 Decisões conscientes, registradas aqui para não serem esquecidas:
 
 - **Ingress sem TLS (HTTP puro).** O token JWT, as senhas de login e todo o tráfego entre o cliente e o Ingress **trafegam sem criptografia**. Para ter HTTPS é preciso um domínio e um certificado, o que acrescenta custo e configuração. **Em produção** seria preciso: registrar um domínio apontando para o IP do Ingress, instalar o `cert-manager` com um emissor Let's Encrypt (ou usar um certificado do Key Vault), adicionar a seção `tls` ao Ingress e redirecionar HTTP para HTTPS.
+- **Elasticsearch como pod dentro do AKS.** Foi confirmado com o professor, no Discord, que essa abordagem é aceita.
 - **Elasticsearch sem autenticação** (`xpack.security.enabled=false`). Ele só é acessível de dentro do cluster, pelo Service `ClusterIP` `fcg-elasticsearch`; não há Ingress para ele. Em produção, habilitar a segurança e acrescentar a senha do usuário `elastic` aos segredos do Key Vault.
 - **Elasticsearch em `emptyDir`.** O índice é derivado do SQL Server: o Catálogo o recria no startup e a cada 60 s compara a contagem de documentos com a do SQL. Se o pod do Elasticsearch for recriado ou o cluster for desligado, o índice é refeito sozinho. Medido com 5.000 jogos e 400 buscas, o pod ficou em ~810 Mi, dentro do limit de 1 Gi.
 - **SQL Server Express** no cluster: gratuito em produção, mas limitado (cerca de 10 GB por banco e ~1,4 GB de memória para cache). O compose local usa a edição Developer (somente dev/teste).
@@ -333,7 +401,7 @@ Decisões conscientes, registradas aqui para não serem esquecidas:
 - **Sem monitoramento da Azure e sem agente de infraestrutura do New Relic**, para poupar custo e memória. A observabilidade das aplicações é feita pelo New Relic APM.
 - **Identidade do usuário nas rotas do Catálogo.** Criar, alterar e apagar jogos exige a role `Admin`, e biblioteca, pedidos e avaliações exigem login. Porém o token JWT só traz o e-mail e a role, **não o id do usuário**, então as rotas que recebem `usuarioId` não verificam se ele pertence a quem está logado: qualquer usuário autenticado que souber o GUID de outro pode consultar a biblioteca dele ou comprar e avaliar em seu nome. Para corrigir, o serviço de Usuários precisa colocar o id no token.
 - **Não existe administrador de fábrica.** O `registrar` só atribui a role `Usuario`; um `Admin` é criado promovendo o usuário por SQL no banco `FCG_Usuarios` (ver o [README do Catálogo](https://github.com/caarolinaoliveira/FCG_Catalogo#autoriza%C3%A7%C3%A3o)).
-- **Swagger do Catálogo e de Usuários expostos publicamente** pelo Ingress (`/swagger-catalogo` e `/swagger-usuarios`), habilitados para a demonstração. Eles documentam as APIs, mas não dão acesso às rotas protegidas sem token. Desligue depois da demonstração (ver "Rotas do Ingress").
+- **Swagger do Catálogo e de Usuários expostos publicamente** pelo Ingress (`/swagger-catalogo` e `/swagger-usuarios`), habilitados para a demonstração (o cluster atual não existe mais; ao recriá-lo, eles voltam ligados). Eles documentam as APIs, mas não dão acesso às rotas protegidas sem token. Desligue depois da demonstração (ver "Rotas do Ingress").
 - **Busca por título exata × busca fuzzy.** `GET /api/jogos/buscar/{titulo}` compara o título inteiro; a busca com tolerância a erros de digitação é `GET /api/jogos/search?q=` (Elasticsearch). Se o Elasticsearch estiver fora do ar, só ela responde `503`; o CRUD continua.
 - **NGINX do Application Routing com prazo de suporte.** Veja a seção [NGINX do Application Routing: suporte até 30/11/2026](#nginx-do-application-routing-suporte-até-30112026).
 - **Ingress controller local aposentado.** O ingress-nginx usado no teste local não recebe mais atualizações (ver acima). Não afeta o AKS.
