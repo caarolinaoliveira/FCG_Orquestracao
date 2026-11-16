@@ -32,7 +32,6 @@ spec:
       containers:
         - name: mongodb
           image: mongo:7.0
-          # Cache do WiredTiger limitado para caber no limit de memória do container.
           args: ["--wiredTigerCacheSizeGB", "0.25"]
           ports:
             - name: mongo

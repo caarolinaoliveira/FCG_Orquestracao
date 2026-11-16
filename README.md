@@ -195,8 +195,8 @@ Para limpar tudo: `kubectl --context docker-desktop delete -k k8s/overlays/local
    az aks show --subscription fcg-aks-payg -g rg-fcg-aks -n aks-fcg --query "addonProfiles.azureKeyvaultSecretsProvider.identity.clientId" -o tsv
    ```
    Troque o texto `PREENCHER-CLIENT-ID-DA-IDENTIDADE-DO-COMPLEMENTO` em `k8s/overlays/aks/secretproviderclass.yaml` por esse valor.
-5. **Garanta que as imagens estão no ACR** com a tag definida em `k8s/overlays/aks/kustomization.yaml` (`1.0.0`). Para outra versão: `kustomize edit set image fcgcarolina.azurecr.io/usuarios-api=fcgcarolina.azurecr.io/usuarios-api:<tag>` dentro de `k8s/overlays/aks`. **Nunca use `latest`** e **use uma tag nova a cada build** (o SHA do commit, por exemplo): o nó do AKS também guarda imagens em cache por tag, então reutilizar uma tag pode manter o pod rodando a imagem antiga, o mesmo problema descrito na seção do Kubernetes local.
-6. **Aplique e verifique:**
+5. **Garanta que as imagens estão no ACR** com a tag definida em `k8s/overlays/aks/kustomization.yaml` (o `newTag` de cada imagem; os pipelines publicam o SHA do commit). Para outra versão: `kustomize edit set image fcgcarolina.azurecr.io/usuarios-api=fcgcarolina.azurecr.io/usuarios-api:<tag>` dentro de `k8s/overlays/aks`. **Nunca use `latest`** e **use uma tag nova a cada build** (o SHA do commit, por exemplo): o nó do AKS também guarda imagens em cache por tag, então reutilizar uma tag pode manter o pod rodando a imagem antiga, o mesmo problema descrito na seção do Kubernetes local.
+6. **Aplique e verifique** (antes, atualize os `newTag`, como explica a seção [Deploy das aplicações pelos pipelines](#deploy-das-aplicações-pelos-pipelines)):
    ```powershell
    kubectl apply -k k8s/overlays/aks
    kubectl -n fcg get pods
@@ -213,6 +213,18 @@ Para limpar tudo: `kubectl --context docker-desktop delete -k k8s/overlays/local
 **Como os segredos chegam aos pods.** O `SecretProviderClass` `kv-fcg-carolina` lê os segredos do Key Vault e, pelo `secretObjects`, os sincroniza como Secrets do Kubernetes. Esses Secrets **só são criados quando algum pod monta o volume CSI**; por isso os 6 Deployments que consomem segredos (SQL Server, RabbitMQ e as 4 aplicações) montam o volume. Mongo, Redis e Elasticsearch não usam segredos e não dependem do Key Vault.
 
 **Alterar um segredo:** mudar o valor no Key Vault **não reinicia** os pods. Depois de alterar, rode `kubectl -n fcg rollout restart deploy/<nome>`.
+
+### Deploy das aplicações pelos pipelines
+
+O deploy das quatro aplicações (`usuarios-api`, `catalogo-api`, `pagamentos-worker`, `notificacoes-worker`) agora é feito pelo job `deploy` do `ci-cd.yml` de cada repositório. A cada push na `master`, depois de publicar a imagem no ACR, o job troca a imagem do Deployment no cluster (`kubectl -n fcg set image`) pela tag igual ao SHA do commit e aguarda o `rollout status` por até 5 minutos; se o rollout falhar, o job falha. Se o cluster estiver parado (`.\infra\stop-aks.ps1`), o job só emite um aviso de que a imagem foi publicada e termina com sucesso. O deploy não é refeito depois: ligue o cluster e rode o workflow de novo (`workflow_dispatch`) ou faça um novo push.
+
+O pipeline só altera a imagem. ConfigMaps, Ingress e os demais manifestos continuam vindo deste repositório, via `kubectl apply -k k8s/overlays/aks`.
+
+> **Antes de qualquer `kubectl apply -k k8s/overlays/aks` manual, atualize os `newTag` em `k8s/overlays/aks/kustomization.yaml` com as tags mais recentes do ACR.** O pipeline muda a imagem direto no cluster e não altera este arquivo; se o `apply` for feito com `newTag` antigos, os Deployments voltam para versões antigas das imagens. Para ver o que está rodando agora:
+> ```powershell
+> kubectl -n fcg get deploy -o custom-columns=NOME:.metadata.name,IMAGEM:.spec.template.spec.containers[0].image
+> ```
+> Use essas tags (ou as mais recentes do ACR, com `az acr repository show-tags`) nos `newTag`.
 
 **Problemas comuns no AKS:**
 

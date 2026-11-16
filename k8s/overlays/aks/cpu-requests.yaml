@@ -1,4 +1,3 @@
-# Só no AKS: o nó (2 vCPUs) tem pouca CPU alocável e o NGINX do Application Routing reserva 500m. Limits e memória ficam como na base.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

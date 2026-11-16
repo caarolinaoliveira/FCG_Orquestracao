@@ -1,6 +1,3 @@
-# Rotas reais dos controllers. A classe do Ingress (ingressClassName) é definida em cada overlay.
-# Sem "host": atende pelo IP do controlador. /health não é exposto (as probes batem direto no pod).
-# O caminho /swagger não é roteado: cada serviço expõe o seu Swagger num prefixo próprio.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
