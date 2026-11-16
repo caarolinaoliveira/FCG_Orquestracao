@@ -15,7 +15,6 @@ metadata:
 spec:
   replicas: 1
   revisionHistoryLimit: 2
-  # Recreate: o disco é ReadWriteOnce e o SQL Server não admite dois processos no mesmo arquivo de dados.
   strategy:
     type: Recreate
   selector:
@@ -30,7 +29,7 @@ spec:
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 60
       securityContext:
-        fsGroup: 10001 # usuário "mssql" da imagem; sem isso o disco montado não é gravável
+        fsGroup: 10001
       containers:
         - name: sqlserver
           image: mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04
@@ -40,7 +39,6 @@ spec:
           env:
             - name: ACCEPT_EULA
               value: "Y"
-            # Express: gratuita para uso em produção (Developer é só para dev/teste).
             - name: MSSQL_PID
               value: Express
             - name: MSSQL_MEMORY_LIMIT_MB
@@ -62,8 +60,6 @@ spec:
               port: sql
             periodSeconds: 5
             failureThreshold: 36
-          # Login real: com tcpSocket o pod ficaria Ready assim que a porta abre, ANTES de o banco
-          # aceitar conexões, e as aplicações (que aplicam migrations no startup) falhariam com timeout.
           readinessProbe:
             exec:
               command:

@@ -21,8 +21,6 @@ labels:
       app.kubernetes.io/part-of: fcg
     includeTemplates: true
 
-# Imagens das aplicações: a tag SEMPRE é definida pelo overlay (nada de "latest").
-# A base sozinha não é implantável de propósito: a tag abaixo é um marcador.
 images:
   - name: fcgcarolina.azurecr.io/usuarios-api
     newTag: DEFINA-A-TAG-NO-OVERLAY
@@ -32,7 +30,4 @@ images:
     newTag: DEFINA-A-TAG-NO-OVERLAY
   - name: fcgcarolina.azurecr.io/notificacoes-worker
     newTag: DEFINA-A-TAG-NO-OVERLAY
-
-# Secrets (infra-secrets, usuarios-secrets, catalogo-secrets, pagamentos-secrets e notificacoes-secrets)
-# NÃO existem na base, de propósito: são criados por scripts/create-local-secrets.ps1 (overlay local)
-# ou sincronizados do Azure Key Vault pelo SecretProviderClass (overlay aks).
+ 

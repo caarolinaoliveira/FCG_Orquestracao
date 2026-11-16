@@ -28,11 +28,9 @@ spec:
     spec:
       automountServiceAccountToken: false
       securityContext:
-        fsGroup: 999 # usuário "rabbitmq" da imagem
-        # Sem isso, a cada montagem o kubelet refaz recursivamente grupo e permissões do disco.
+        fsGroup: 999 
         fsGroupChangePolicy: OnRootMismatch
       initContainers:
-        # O fsGroup deixa o .erlang.cookie com acesso de grupo, e o Erlang exige 600 (só o dono).
         - name: corrigir-cookie-erlang
           image: busybox:1.36
           command:

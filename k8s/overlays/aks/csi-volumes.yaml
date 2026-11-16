@@ -1,6 +1,3 @@
-# Monta o volume CSI da SecretProviderClass nos Deployments que consomem segredos.
-# Sem o volume montado, o Secret do Kubernetes NÃO é sincronizado a partir do Key Vault.
-# (Mongo, Redis e Elasticsearch não usam segredos, então não montam e não dependem do Key Vault.)
 apiVersion: apps/v1
 kind: Deployment
 metadata:

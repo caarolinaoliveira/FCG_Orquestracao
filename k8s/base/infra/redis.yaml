@@ -1,4 +1,3 @@
-# Redis só como cache: sem volume e sem persistência (--save ""), com teto de memória e remoção LRU.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
